@@ -68,9 +68,9 @@ st.markdown(
         }
 
         .section-title {
-            font-size: 17px;
-            font-weight: 900;
-            color: #0f172a;
+            font-size: 18px;
+            font-weight: 950;
+            color: #020617;
             margin-top: 10px;
             margin-bottom: 4px;
         }
@@ -84,34 +84,42 @@ st.markdown(
         }
 
         .kpi-card {
-            padding: 11px 12px;
+            padding: 12px 13px;
             border-radius: 12px;
-            color: white;
-            min-height: 90px;
-            box-shadow: 0px 6px 14px rgba(15, 23, 42, 0.13);
+            color: #ffffff;
+            min-height: 96px;
+            box-shadow: 0px 7px 16px rgba(15, 23, 42, 0.18);
             margin-bottom: 8px;
+            border: 1px solid rgba(255,255,255,0.18);
         }
 
         .kpi-title {
-            font-size: 9.5px;
-            font-weight: 900;
+            font-size: 10.5px;
+            font-weight: 950;
             letter-spacing: .5px;
             text-transform: uppercase;
-            opacity: .92;
+            opacity: 1;
+            color: #ffffff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.45);
         }
 
         .kpi-value {
-            font-size: 24px;
-            font-weight: 900;
-            margin-top: 4px;
+            font-size: 28px;
+            font-weight: 950;
+            margin-top: 5px;
             line-height: 1.05;
+            color: #ffffff;
+            text-shadow: 0 2px 5px rgba(0,0,0,0.45);
         }
 
         .kpi-subtitle {
-            font-size: 10.5px;
-            opacity: .98;
-            margin-top: 5px;
+            font-size: 11.5px;
+            font-weight: 800;
+            opacity: 1;
+            color: #ffffff;
+            margin-top: 6px;
             line-height: 1.25;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.45);
         }
 
         .mini-alert {
@@ -125,15 +133,16 @@ st.markdown(
         }
 
         .mini-label {
-            color: #64748b;
-            font-size: 10.5px;
+            color: #334155;
+            font-size: 11px;
+            font-weight: 800;
             margin-bottom: 4px;
         }
 
         .mini-value {
-            color: #0f172a;
-            font-size: 16px;
-            font-weight: 900;
+            color: #020617;
+            font-size: 17px;
+            font-weight: 950;
             line-height: 1.22;
         }
 
@@ -641,9 +650,23 @@ def layout_compacto(fig, altura=245):
     fig.update_layout(
         height=altura,
         margin=dict(l=8, r=10, t=38, b=20),
-        font=dict(size=9),
-        title_font=dict(size=12),
-        legend=dict(font=dict(size=8)),
+        font=dict(size=10, color="#020617"),
+        title_font=dict(size=13, color="#020617"),
+        legend=dict(font=dict(size=9, color="#020617")),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(
+            tickfont=dict(size=10, color="#020617"),
+            title_font=dict(size=11, color="#020617"),
+            gridcolor="#dbe3ef",
+            zerolinecolor="#cbd5e1",
+        ),
+        yaxis=dict(
+            tickfont=dict(size=10, color="#020617"),
+            title_font=dict(size=11, color="#020617"),
+            gridcolor="#dbe3ef",
+            zerolinecolor="#cbd5e1",
+        ),
     )
     return fig
 
@@ -654,7 +677,7 @@ def grafico_resumo(kpis, mes):
         "Quantidade": [kpis["total"], kpis["encerrados"], kpis["criticos"], kpis["pendentes"]],
     })
     fig = px.bar(dados, x="Indicador", y="Quantidade", text="Quantidade", title=f"Resumo — {mes}")
-    fig.update_traces(textposition="outside")
+    fig.update_traces(textposition="outside", textfont=dict(color="#020617", size=11))
     fig.update_layout(showlegend=False)
     return layout_compacto(fig, 230)
 
@@ -669,7 +692,7 @@ def grafico_resumo_comp(k1, k0, m1, m0):
         ],
     })
     fig = px.bar(dados, x="Indicador", y="Quantidade", color="Mês", barmode="group", text="Quantidade", title=f"Resumo — {m1} x {m0}")
-    fig.update_traces(textposition="outside")
+    fig.update_traces(textposition="outside", textfont=dict(color="#020617", size=11))
     return layout_compacto(fig, 230)
 
 
@@ -679,7 +702,7 @@ def grafico_qualidade(kpis, mes):
         "Percentual": [kpis["sla"], kpis["retorno_1h"]],
     })
     fig = px.bar(dados, x="Indicador", y="Percentual", text=dados["Percentual"].map(lambda x: f"{x:.1f}%"), title=f"Qualidade — {mes}")
-    fig.update_traces(textposition="outside")
+    fig.update_traces(textposition="outside", textfont=dict(color="#020617", size=11))
     fig.update_yaxes(range=[0, 100])
     return layout_compacto(fig, 215)
 
@@ -691,7 +714,7 @@ def grafico_qualidade_comp(k1, k0, m1, m0):
         "Percentual": [k0["sla"], k0["retorno_1h"], k1["sla"], k1["retorno_1h"]],
     })
     fig = px.bar(dados, x="Indicador", y="Percentual", color="Mês", barmode="group", text=dados["Percentual"].map(lambda x: f"{x:.1f}%"), title=f"Qualidade — {m1} x {m0}")
-    fig.update_traces(textposition="outside")
+    fig.update_traces(textposition="outside", textfont=dict(color="#020617", size=11))
     fig.update_yaxes(range=[0, 100])
     return layout_compacto(fig, 215)
 
@@ -710,7 +733,7 @@ def grafico_top(df, coluna, titulo, top=5, altura=240):
     dados["Categoria"] = dados[coluna].apply(lambda x: encurtar(x, 31))
 
     fig = px.bar(dados, x="Chamados", y="Categoria", orientation="h", text="Chamados", title=titulo)
-    fig.update_traces(textposition="inside")
+    fig.update_traces(textposition="inside", textfont=dict(color="#ffffff", size=11))
     fig.update_layout(yaxis={"categoryorder": "total ascending"}, yaxis_title="", xaxis_title="Chamados", showlegend=False)
     return layout_compacto(fig, altura)
 
@@ -721,6 +744,7 @@ def grafico_prioridade(df, titulo):
 
     dados = df.groupby("Prioridade").size().reset_index(name="Chamados").sort_values("Chamados", ascending=False)
     fig = px.pie(dados, values="Chamados", names="Prioridade", title=titulo, hole=0.45)
+    fig.update_traces(textfont=dict(color="#020617", size=11))
     return layout_compacto(fig, 235)
 
 
@@ -743,7 +767,7 @@ def grafico_comp_categoria(df_principal, df_comp, coluna, mes_principal, mes_com
     )
 
     fig = px.bar(melt, x="Chamados", y="Categoria", color="Mês", barmode="group", orientation="h", text="Chamados", title=titulo)
-    fig.update_traces(textposition="outside")
+    fig.update_traces(textposition="outside", textfont=dict(color="#020617", size=11))
     fig.update_layout(yaxis={"categoryorder": "total ascending"}, yaxis_title="", xaxis_title="Chamados", legend_title_text="")
     return layout_compacto(fig, altura)
 
@@ -915,14 +939,14 @@ titulo_kpi = f"📌 KPIs — {mes_principal}" if modo == "Único mês" else f"�
 st.markdown(f'<div class="section-title">{titulo_kpi}</div><div class="section-line"></div>', unsafe_allow_html=True)
 
 cores = [
-    "linear-gradient(135deg, #2563eb, #7c3aed)",
-    "linear-gradient(135deg, #7c3aed, #4f46e5)",
-    "linear-gradient(135deg, #059669, #34d399)",
-    "linear-gradient(135deg, #f59e0b, #fcd34d)",
-    "linear-gradient(135deg, #14b8a6, #5eead4)",
-    "linear-gradient(135deg, #1e3a8a, #334155)",
-    "linear-gradient(135deg, #ef4444, #f97316)",
-    "linear-gradient(135deg, #e11d48, #ef4444)",
+    "linear-gradient(135deg, #1d4ed8, #6d28d9)",
+    "linear-gradient(135deg, #6d28d9, #4338ca)",
+    "linear-gradient(135deg, #047857, #10b981)",
+    "linear-gradient(135deg, #b45309, #f59e0b)",
+    "linear-gradient(135deg, #0f766e, #14b8a6)",
+    "linear-gradient(135deg, #172554, #1e293b)",
+    "linear-gradient(135deg, #dc2626, #ea580c)",
+    "linear-gradient(135deg, #be123c, #dc2626)",
 ]
 
 if modo == "Único mês":
