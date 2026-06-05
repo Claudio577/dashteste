@@ -11,7 +11,7 @@ import streamlit as st
 
 
 # ============================================================
-# CONFIGURAÇÃO DA PÁGINA
+# CONFIGURAÇÃO
 # ============================================================
 
 st.set_page_config(
@@ -22,7 +22,7 @@ st.set_page_config(
 
 
 # ============================================================
-# ESTILO
+# CSS
 # ============================================================
 
 st.markdown(
@@ -56,7 +56,7 @@ st.markdown(
             padding: 22px;
             border-radius: 18px;
             color: white;
-            min-height: 145px;
+            min-height: 155px;
             box-shadow: 0px 10px 25px rgba(15, 23, 42, 0.16);
         }
 
@@ -105,6 +105,7 @@ st.markdown(
             background: #ffffff;
             box-shadow: 0px 6px 16px rgba(15, 23, 42, 0.06);
             min-height: 95px;
+            margin-bottom: 12px;
         }
 
         .small-muted {
@@ -118,7 +119,7 @@ st.markdown(
 
 
 # ============================================================
-# FUNÇÕES UTILITÁRIAS
+# FUNÇÕES BÁSICAS
 # ============================================================
 
 def normalizar_texto(texto) -> str:
@@ -159,31 +160,6 @@ def formatar_horas(valor, casas=1):
     return f"{valor:.{casas}f}h".replace(".", ",")
 
 
-def calcular_variacao(valor_atual, valor_comp):
-    if valor_comp in [0, None] or pd.isna(valor_comp):
-        return None
-    return ((valor_atual - valor_comp) / valor_comp) * 100
-
-
-def texto_delta(valor_atual, valor_comp, sufixo="", percentual=True, pp=False, horas=False):
-    if valor_comp is None or pd.isna(valor_comp):
-        return "Sem mês comparado"
-
-    diff = valor_atual - valor_comp
-
-    if pp:
-        return f"Comparado: {formatar_percentual(valor_comp)} | {diff:+.1f} p.p.".replace(".", ",")
-
-    if horas:
-        return f"Comparado: {formatar_horas(valor_comp)} | {diff:+.1f}h".replace(".", ",")
-
-    if percentual and valor_comp != 0:
-        var = calcular_variacao(valor_atual, valor_comp)
-        return f"Comparado: {formatar_numero(valor_comp)} | {diff:+.0f} {sufixo} ({var:+.1f}%)".replace(".", ",")
-
-    return f"Comparado: {formatar_numero(valor_comp)} | {diff:+.0f} {sufixo}".replace(".", ",")
-
-
 def criar_card(titulo, valor, subtitulo, cor):
     st.markdown(
         f"""
@@ -197,8 +173,27 @@ def criar_card(titulo, valor, subtitulo, cor):
     )
 
 
+def texto_delta(valor_atual, valor_comp, sufixo="", percentual=True, pp=False, horas=False):
+    if valor_comp is None or pd.isna(valor_comp):
+        return "Sem comparação"
+
+    diff = valor_atual - valor_comp
+
+    if pp:
+        return f"Comparado: {formatar_percentual(valor_comp)} | {diff:+.1f} p.p.".replace(".", ",")
+
+    if horas:
+        return f"Comparado: {formatar_horas(valor_comp)} | {diff:+.1f}h".replace(".", ",")
+
+    if percentual and valor_comp != 0:
+        var = (diff / valor_comp) * 100
+        return f"Comparado: {formatar_numero(valor_comp)} | {diff:+.0f} {sufixo} ({var:+.1f}%)".replace(".", ",")
+
+    return f"Comparado: {formatar_numero(valor_comp)} | {diff:+.0f} {sufixo}".replace(".", ",")
+
+
 # ============================================================
-# MAPEAMENTO DE COLUNAS
+# MAPEAMENTO DAS COLUNAS
 # ============================================================
 
 CANDIDATOS_COLUNAS = {
@@ -252,7 +247,6 @@ CANDIDATOS_COLUNAS = {
 def mapear_colunas(df: pd.DataFrame) -> Dict[str, Optional[str]]:
     colunas_originais = list(df.columns)
     colunas_limpas = {col: limpar_nome_coluna(col) for col in colunas_originais}
-
     mapeamento = {}
 
     for destino, candidatos in CANDIDATOS_COLUNAS.items():
@@ -279,8 +273,6 @@ def mapear_colunas(df: pd.DataFrame) -> Dict[str, Optional[str]]:
 
 
 def renomear_colunas_padrao(df: pd.DataFrame, mapeamento: Dict[str, Optional[str]]) -> pd.DataFrame:
-    renomear = {}
-
     nomes_padrao = {
         "id_chamado": "ID_Chamado",
         "empresa": "Empresa",
@@ -301,6 +293,8 @@ def renomear_colunas_padrao(df: pd.DataFrame, mapeamento: Dict[str, Optional[str
         "horas_consumidas": "Horas_Consumidas",
     }
 
+    renomear = {}
+
     for destino, origem in mapeamento.items():
         if origem is not None and origem in df.columns:
             renomear[origem] = nomes_padrao[destino]
@@ -315,7 +309,7 @@ def renomear_colunas_padrao(df: pd.DataFrame, mapeamento: Dict[str, Optional[str
 
 
 # ============================================================
-# TRATAMENTO DE DADOS
+# TRATAMENTO DOS EXCEL
 # ============================================================
 
 MESES_PT = {
@@ -334,9 +328,18 @@ MESES_PT = {
 }
 
 MESES_NOME = {
-    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
+    1: "Janeiro",
+    2: "Fevereiro",
+    3: "Março",
+    4: "Abril",
+    5: "Maio",
+    6: "Junho",
+    7: "Julho",
+    8: "Agosto",
+    9: "Setembro",
+    10: "Outubro",
+    11: "Novembro",
+    12: "Dezembro",
 }
 
 
@@ -390,6 +393,7 @@ def preparar_dataframe(df: pd.DataFrame, nome_arquivo: str) -> Tuple[pd.DataFram
 
     mes_arquivo, ano_arquivo = extrair_mes_arquivo(nome_arquivo)
 
+    # Primeiro tenta mês pela coluna Abertura
     if df["Abertura"].notna().any():
         df["Ano"] = df["Abertura"].dt.year
         df["Mes"] = df["Abertura"].dt.month
@@ -397,6 +401,7 @@ def preparar_dataframe(df: pd.DataFrame, nome_arquivo: str) -> Tuple[pd.DataFram
         df["Ano"] = ano_arquivo
         df["Mes"] = mes_arquivo
 
+    # Se não conseguir pela data, usa o nome do arquivo
     if mes_arquivo and ano_arquivo:
         df["Mes"] = df["Mes"].fillna(mes_arquivo)
         df["Ano"] = df["Ano"].fillna(ano_arquivo)
@@ -419,18 +424,17 @@ def preparar_dataframe(df: pd.DataFrame, nome_arquivo: str) -> Tuple[pd.DataFram
     return df, mapeamento
 
 
-def carregar_dados_excel(uploaded_files) -> Tuple[pd.DataFrame, List[str], Dict[str, Dict[str, Optional[str]]]]:
+@st.cache_data(show_spinner=False)
+def carregar_dados_excel_cache(lista_arquivos: List[Tuple[str, bytes]]) -> Tuple[pd.DataFrame, List[str], Dict[str, Dict[str, Optional[str]]]]:
     lista = []
     arquivos = []
     mapas = {}
 
-    for uploaded in uploaded_files:
-        nome = uploaded.name
+    for nome, conteudo in lista_arquivos:
         arquivos.append(nome)
 
         try:
-            bytes_data = uploaded.read()
-            bio = BytesIO(bytes_data)
+            bio = BytesIO(conteudo)
 
             if nome.lower().endswith(".xls"):
                 df = pd.read_excel(bio, engine="xlrd")
@@ -457,27 +461,19 @@ def carregar_dados_api(data_inicio: str, data_fim: str):
     """
     Função preparada para uso futuro via API.
 
-    Importante:
-    - Usar apenas GET.
-    - Não usar POST, PUT, PATCH ou DELETE.
+    Usar somente GET.
+    Não usar POST, PUT, PATCH ou DELETE.
 
     Exemplo futuro:
     GET /chamados?data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD
     """
     import requests
 
-    # Exemplo futuro desativado:
-    # base_url = "https://sua-api.com.br/chamados"
-    # params = {"data_inicio": data_inicio, "data_fim": data_fim}
-    # response = requests.get(base_url, params=params, timeout=30)
-    # response.raise_for_status()
-    # return pd.DataFrame(response.json())
-
     return pd.DataFrame()
 
 
 # ============================================================
-# CÁLCULOS DE KPIs
+# KPIs
 # ============================================================
 
 def total_chamados(df: pd.DataFrame) -> int:
@@ -539,10 +535,7 @@ def calcular_kpis(df: pd.DataFrame) -> Dict[str, float]:
     chamados_com_vencimento = int(df["Vencimento"].notna().sum())
     dentro_sla = int(dentro_sla_mask.sum())
 
-    if chamados_com_vencimento > 0:
-        sla = (dentro_sla / chamados_com_vencimento) * 100
-    else:
-        sla = 0.0
+    sla = (dentro_sla / chamados_com_vencimento) * 100 if chamados_com_vencimento > 0 else 0.0
 
     hoje = pd.Timestamp.today()
 
@@ -625,10 +618,6 @@ def calcular_kpis(df: pd.DataFrame) -> Dict[str, float]:
     }
 
 
-def filtrar_mes(df: pd.DataFrame, mes_ano: str) -> pd.DataFrame:
-    return df[df["MesAno"].astype(str) == str(mes_ano)].copy()
-
-
 def obter_meses_ordenados(df: pd.DataFrame) -> List[str]:
     ordem = (
         df[["MesAno", "AnoMesNum"]]
@@ -675,9 +664,7 @@ def ranking_clientes_aumento(df_principal, df_comp) -> pd.DataFrame:
     ranking["Chamados_Mes_Principal"] = ranking["Chamados_Mes_Principal"].astype(int)
     ranking["Chamados_Mes_Comparado"] = ranking["Chamados_Mes_Comparado"].astype(int)
 
-    ranking["Diferenca"] = (
-        ranking["Chamados_Mes_Principal"] - ranking["Chamados_Mes_Comparado"]
-    )
+    ranking["Diferenca"] = ranking["Chamados_Mes_Principal"] - ranking["Chamados_Mes_Comparado"]
 
     ranking["Variacao_%"] = np.where(
         ranking["Chamados_Mes_Comparado"] > 0,
@@ -901,6 +888,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+# ============================================================
+# UPLOAD
+# ============================================================
+
 st.sidebar.header("📤 Upload dos Excel")
 
 uploaded_files = st.sidebar.file_uploader(
@@ -913,11 +905,18 @@ if not uploaded_files:
     st.info("Faça upload de um ou mais arquivos Excel para gerar o dashboard.")
     st.stop()
 
-df, arquivos_carregados, mapas_colunas = carregar_dados_excel(uploaded_files)
+lista_arquivos = [(arquivo.name, arquivo.getvalue()) for arquivo in uploaded_files]
+
+df, arquivos_carregados, mapas_colunas = carregar_dados_excel_cache(lista_arquivos)
 
 if df.empty:
     st.error("Nenhum dado válido foi carregado. Verifique os arquivos enviados.")
     st.stop()
+
+
+# ============================================================
+# INFORMAÇÕES DO DATASET
+# ============================================================
 
 st.sidebar.markdown("### ℹ️ Informações do Dataset")
 st.sidebar.write(f"**Arquivos enviados:** {len(arquivos_carregados)}")
@@ -936,21 +935,36 @@ with st.sidebar.expander("📋 Colunas mapeadas"):
         }
         st.json(mapa_exibicao)
 
+
+# ============================================================
+# FILTROS PRINCIPAIS NA TELA
+# ============================================================
+
 meses = obter_meses_ordenados(df)
 
-st.sidebar.header("🎛️ Filtros")
-
-modo = st.sidebar.radio(
-    "Modo de visão",
-    ["Único mês", "Comparação"],
-    index=0,
+st.markdown(
+    '<div class="section-title">🎛️ Filtros do Dashboard</div><div class="section-line"></div>',
+    unsafe_allow_html=True,
 )
 
-mes_principal = st.sidebar.selectbox(
-    "Mês principal",
-    meses,
-    index=len(meses) - 1,
-)
+col_f1, col_f2, col_f3 = st.columns(3)
+
+with col_f1:
+    modo = st.radio(
+        "Modo de visão",
+        ["Único mês", "Comparação"],
+        index=0,
+        horizontal=True,
+        key="modo_visao_principal",
+    )
+
+with col_f2:
+    mes_principal = st.selectbox(
+        "Mês principal",
+        meses,
+        index=len(meses) - 1,
+        key="mes_principal_tela",
+    )
 
 mes_sugerido = mes_anterior_disponivel(df, mes_principal)
 
@@ -959,14 +973,24 @@ if mes_sugerido and mes_sugerido in meses:
 else:
     index_comp = 0
 
-mes_comparacao = None
+with col_f3:
+    if modo == "Comparação":
+        mes_comparacao = st.selectbox(
+            "Mês de comparação",
+            meses,
+            index=index_comp,
+            key="mes_comparacao_tela",
+        )
+    else:
+        mes_comparacao = None
+        st.info("Comparação desligada")
 
-if modo == "Comparação":
-    mes_comparacao = st.sidebar.selectbox(
-        "Mês de comparação",
-        meses,
-        index=index_comp,
-    )
+
+# ============================================================
+# FILTROS ADICIONAIS NA LATERAL
+# ============================================================
+
+st.sidebar.header("🎛️ Filtros adicionais")
 
 empresas = ["Todas"] + sorted(df["Empresa_Padronizada"].dropna().unique().tolist())
 setores = ["Todos"] + sorted(df["Setor"].dropna().unique().tolist())
@@ -1004,11 +1028,6 @@ def aplicar_filtros_base(df_base: pd.DataFrame) -> pd.DataFrame:
 
 df_filtrado_geral = aplicar_filtros_base(df)
 
-# ============================================================
-# CORREÇÃO PRINCIPAL:
-# o mês principal controla KPIs e gráficos do mês selecionado.
-# ============================================================
-
 df_principal = df_filtrado_geral[
     df_filtrado_geral["MesAno"].astype(str) == str(mes_principal)
 ].copy()
@@ -1029,6 +1048,10 @@ if modo == "Comparação":
         st.warning("O mês de comparação é igual ao mês principal. Escolha meses diferentes para comparar melhor.")
 
 
+# ============================================================
+# CONFERÊNCIA
+# ============================================================
+
 with st.expander("🧪 Conferência por mês"):
     conferencia = (
         df_filtrado_geral
@@ -1040,6 +1063,7 @@ with st.expander("🧪 Conferência por mês"):
 
     st.dataframe(conferencia[["MesAno", "Linhas"]], use_container_width=True)
 
+    st.write("Modo selecionado:", modo)
     st.write("Mês principal selecionado:", mes_principal)
     st.write("Linhas do mês principal:", len(df_principal))
 
@@ -1113,7 +1137,7 @@ for linha in range(2):
 
 
 # ============================================================
-# RESUMO GERAL E QUALIDADE
+# RESUMO GERAL
 # ============================================================
 
 st.markdown(
@@ -1131,6 +1155,11 @@ else:
         grafico_resumo_comparacao(kpi_princ, kpi_comp, mes_principal, mes_comparacao),
         use_container_width=True,
     )
+
+
+# ============================================================
+# QUALIDADE
+# ============================================================
 
 st.markdown(
     '<div class="section-title">🎯 Indicadores de Qualidade</div><div class="section-line"></div>',
@@ -1165,7 +1194,7 @@ st.plotly_chart(
 
 
 # ============================================================
-# OPERAÇÃO, CLIENTES E MOTIVOS
+# OPERAÇÃO
 # ============================================================
 
 st.markdown(
@@ -1269,7 +1298,7 @@ if modo == "Comparação":
 
 
 # ============================================================
-# ALERTAS EXECUTIVOS
+# ALERTAS
 # ============================================================
 
 st.markdown(
@@ -1277,13 +1306,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-alertas = []
-
-alertas.append(("Chamados críticos", formatar_numero(kpi_princ["criticos"])))
-alertas.append(("Pendentes", formatar_numero(kpi_princ["pendentes"])))
-alertas.append(("Fora do SLA", formatar_numero(kpi_princ["fora_sla"])))
-alertas.append(("Sem avaliação", formatar_numero(kpi_princ["sem_avaliacao"])))
-alertas.append(("1º retorno ≤ 1h", formatar_percentual(kpi_princ["retorno_1h"])))
+alertas = [
+    ("Chamados críticos", formatar_numero(kpi_princ["criticos"])),
+    ("Pendentes", formatar_numero(kpi_princ["pendentes"])),
+    ("Fora do SLA", formatar_numero(kpi_princ["fora_sla"])),
+    ("Sem avaliação", formatar_numero(kpi_princ["sem_avaliacao"])),
+    ("1º retorno ≤ 1h", formatar_percentual(kpi_princ["retorno_1h"])),
+]
 
 if modo == "Comparação":
     ranking = ranking_clientes_aumento(df_principal, df_comp)
@@ -1334,7 +1363,7 @@ for i, (titulo, valor) in enumerate(alertas):
 
 
 # ============================================================
-# AMOSTRA DOS DADOS
+# AMOSTRA
 # ============================================================
 
 with st.expander("🔎 Ver amostra dos dados tratados"):
