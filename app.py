@@ -86,11 +86,11 @@ st.markdown(
         .kpi-card {
             padding: 12px 13px;
             border-radius: 12px;
-            color: #ffffff;
+            color: #020617;
             min-height: 96px;
-            box-shadow: 0px 7px 16px rgba(15, 23, 42, 0.18);
+            box-shadow: 0px 7px 16px rgba(15, 23, 42, 0.10);
             margin-bottom: 8px;
-            border: 1px solid rgba(255,255,255,0.18);
+            border: 1px solid rgba(15, 23, 42, 0.10);
         }
 
         .kpi-title {
@@ -99,27 +99,39 @@ st.markdown(
             letter-spacing: .5px;
             text-transform: uppercase;
             opacity: 1;
-            color: #ffffff;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.45);
+            color: #020617;
         }
 
         .kpi-value {
-            font-size: 28px;
+            font-size: 29px;
             font-weight: 950;
             margin-top: 5px;
             line-height: 1.05;
-            color: #ffffff;
-            text-shadow: 0 2px 5px rgba(0,0,0,0.45);
+            color: #020617;
         }
 
         .kpi-subtitle {
             font-size: 11.5px;
-            font-weight: 800;
+            font-weight: 850;
             opacity: 1;
-            color: #ffffff;
+            color: #020617;
             margin-top: 6px;
             line-height: 1.25;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.45);
+        }
+
+        .delta-pos {
+            color: #047857;
+            font-weight: 950;
+        }
+
+        .delta-neg {
+            color: #dc2626;
+            font-weight: 950;
+        }
+
+        .delta-neutral {
+            color: #334155;
+            font-weight: 900;
         }
 
         .mini-alert {
@@ -157,6 +169,12 @@ st.markdown(
         div[data-testid="stDataFrame"] {
             border-radius: 12px;
         }
+
+        div[data-testid="stDataFrame"] div {
+            color: #020617 !important;
+            font-weight: 650 !important;
+        }
+
 
         .stSelectbox label, .stRadio label {
             font-size: 12px !important;
@@ -222,23 +240,33 @@ def encurtar(texto, limite=34):
     return texto[:limite - 3] + "..."
 
 
-def subtitulo_delta(atual, comp, sufixo="", pp=False, horas=False):
+def subtitulo_delta(atual, comp, sufixo="", pp=False, horas=False, melhor_quando_maior=True, neutro=False):
     if comp is None or pd.isna(comp):
-        return "Sem comparação"
+        return '<span class="delta-neutral">Sem comparação</span>'
 
     diff = atual - comp
 
+    if neutro or diff == 0:
+        classe = "delta-neutral"
+    else:
+        melhorou = diff > 0 if melhor_quando_maior else diff < 0
+        classe = "delta-pos" if melhorou else "delta-neg"
+
     if pp:
-        return f"{fmt_pct(comp)} | {diff:+.1f} p.p.".replace(".", ",")
+        texto = f"{fmt_pct(comp)} | {diff:+.1f} p.p.".replace(".", ",")
+        return f'<span class="{classe}">{texto}</span>'
 
     if horas:
-        return f"{fmt_horas(comp)} | {diff:+.1f}h".replace(".", ",")
+        texto = f"{fmt_horas(comp)} | {diff:+.1f}h".replace(".", ",")
+        return f'<span class="{classe}">{texto}</span>'
 
     if comp != 0:
         var = (diff / comp) * 100
-        return f"{fmt_num(comp)} | {diff:+.0f} {sufixo} ({var:+.1f}%)".replace(".", ",")
+        texto = f"{fmt_num(comp)} | {diff:+.0f} {sufixo} ({var:+.1f}%)".replace(".", ",")
+        return f'<span class="{classe}">{texto}</span>'
 
-    return f"{fmt_num(comp)} | {diff:+.0f} {sufixo}".replace(".", ",")
+    texto = f"{fmt_num(comp)} | {diff:+.0f} {sufixo}".replace(".", ",")
+    return f'<span class="{classe}">{texto}</span>'
 
 
 def card(titulo, valor, subtitulo, cor):
@@ -691,7 +719,7 @@ def grafico_resumo_comp(k1, k0, m1, m0):
             k1["total"], k1["encerrados"], k1["criticos"], k1["pendentes"],
         ],
     })
-    fig = px.bar(dados, x="Indicador", y="Quantidade", color="Mês", barmode="group", text="Quantidade", title=f"Resumo — {m1} x {m0}")
+    fig = px.bar(dados, x="Indicador", y="Quantidade", color="Mês", barmode="group", text="Quantidade", title=f"Resumo — {m0} x {m1}")
     fig.update_traces(textposition="outside", textfont=dict(color="#020617", size=11))
     return layout_compacto(fig, 230)
 
@@ -713,7 +741,7 @@ def grafico_qualidade_comp(k1, k0, m1, m0):
         "Mês": [m0, m0, m1, m1],
         "Percentual": [k0["sla"], k0["retorno_1h"], k1["sla"], k1["retorno_1h"]],
     })
-    fig = px.bar(dados, x="Indicador", y="Percentual", color="Mês", barmode="group", text=dados["Percentual"].map(lambda x: f"{x:.1f}%"), title=f"Qualidade — {m1} x {m0}")
+    fig = px.bar(dados, x="Indicador", y="Percentual", color="Mês", barmode="group", text=dados["Percentual"].map(lambda x: f"{x:.1f}%"), title=f"Qualidade — {m0} x {m1}")
     fig.update_traces(textposition="outside", textfont=dict(color="#020617", size=11))
     fig.update_yaxes(range=[0, 100])
     return layout_compacto(fig, 215)
@@ -935,18 +963,18 @@ if modo == "Comparação":
 # KPIs
 # ============================================================
 
-titulo_kpi = f"📌 KPIs — {mes_principal}" if modo == "Único mês" else f"📌 KPIs — {mes_principal} x {mes_comparacao}"
+titulo_kpi = f"📌 KPIs — {mes_principal}" if modo == "Único mês" else f"📌 KPIs — {mes_comparacao} x {mes_principal}"
 st.markdown(f'<div class="section-title">{titulo_kpi}</div><div class="section-line"></div>', unsafe_allow_html=True)
 
 cores = [
-    "linear-gradient(135deg, #1d4ed8, #6d28d9)",
-    "linear-gradient(135deg, #6d28d9, #4338ca)",
-    "linear-gradient(135deg, #047857, #10b981)",
-    "linear-gradient(135deg, #b45309, #f59e0b)",
-    "linear-gradient(135deg, #0f766e, #14b8a6)",
-    "linear-gradient(135deg, #172554, #1e293b)",
-    "linear-gradient(135deg, #dc2626, #ea580c)",
-    "linear-gradient(135deg, #be123c, #dc2626)",
+    "linear-gradient(135deg, #dbeafe, #e0e7ff)",
+    "linear-gradient(135deg, #ede9fe, #ddd6fe)",
+    "linear-gradient(135deg, #d1fae5, #bbf7d0)",
+    "linear-gradient(135deg, #fef3c7, #fde68a)",
+    "linear-gradient(135deg, #ccfbf1, #99f6e4)",
+    "linear-gradient(135deg, #dbeafe, #bfdbfe)",
+    "linear-gradient(135deg, #ffedd5, #fed7aa)",
+    "linear-gradient(135deg, #ffe4e6, #fecdd3)",
 ]
 
 if modo == "Único mês":
@@ -962,14 +990,14 @@ if modo == "Único mês":
     ]
 else:
     cards = [
-        ("Chamados", fmt_num(kpi_princ["total"]), subtitulo_delta(kpi_princ["total"], kpi_comp["total"], "chamados")),
-        ("Empresas", fmt_num(kpi_princ["empresas"]), subtitulo_delta(kpi_princ["empresas"], kpi_comp["empresas"], "empresas")),
-        ("Encerrados", fmt_num(kpi_princ["encerrados"]), subtitulo_delta(kpi_princ["encerrados"], kpi_comp["encerrados"], "encerrados")),
-        ("Pendentes", fmt_num(kpi_princ["pendentes"]), subtitulo_delta(kpi_princ["pendentes"], kpi_comp["pendentes"], "pendentes")),
-        ("SLA", fmt_pct(kpi_princ["sla"]), subtitulo_delta(kpi_princ["sla"], kpi_comp["sla"], pp=True)),
-        ("1º retorno", fmt_pct(kpi_princ["retorno_1h"]), subtitulo_delta(kpi_princ["retorno_1h"], kpi_comp["retorno_1h"], pp=True)),
-        ("Resolução", fmt_horas(kpi_princ["resolucao_h"]), subtitulo_delta(kpi_princ["resolucao_h"], kpi_comp["resolucao_h"], horas=True)),
-        ("Críticos", fmt_num(kpi_princ["criticos"]), subtitulo_delta(kpi_princ["criticos"], kpi_comp["criticos"], "críticos")),
+        ("Chamados", fmt_num(kpi_princ["total"]), subtitulo_delta(kpi_princ["total"], kpi_comp["total"], "chamados", melhor_quando_maior=True)),
+        ("Empresas", fmt_num(kpi_princ["empresas"]), subtitulo_delta(kpi_princ["empresas"], kpi_comp["empresas"], "empresas", melhor_quando_maior=True)),
+        ("Encerrados", fmt_num(kpi_princ["encerrados"]), subtitulo_delta(kpi_princ["encerrados"], kpi_comp["encerrados"], "encerrados", melhor_quando_maior=True)),
+        ("Pendentes", fmt_num(kpi_princ["pendentes"]), subtitulo_delta(kpi_princ["pendentes"], kpi_comp["pendentes"], "pendentes", melhor_quando_maior=False)),
+        ("SLA", fmt_pct(kpi_princ["sla"]), subtitulo_delta(kpi_princ["sla"], kpi_comp["sla"], pp=True, melhor_quando_maior=True)),
+        ("1º retorno", fmt_pct(kpi_princ["retorno_1h"]), subtitulo_delta(kpi_princ["retorno_1h"], kpi_comp["retorno_1h"], pp=True, melhor_quando_maior=True)),
+        ("Resolução", fmt_horas(kpi_princ["resolucao_h"]), subtitulo_delta(kpi_princ["resolucao_h"], kpi_comp["resolucao_h"], horas=True, melhor_quando_maior=False)),
+        ("Críticos", fmt_num(kpi_princ["criticos"]), subtitulo_delta(kpi_princ["criticos"], kpi_comp["criticos"], "críticos", melhor_quando_maior=False)),
     ]
 
 row1 = st.columns(4)
@@ -1022,7 +1050,7 @@ with col_dir:
         st.plotly_chart(grafico_prioridade(df_principal, f"Prioridade — {mes_principal}"), use_container_width=True, config=plot_config())
     else:
         st.plotly_chart(
-            grafico_comp_categoria(df_principal, df_comp, "Prioridade", mes_principal, mes_comparacao, f"Prioridade — {mes_principal} x {mes_comparacao}", top=5, altura=235),
+            grafico_comp_categoria(df_principal, df_comp, "Prioridade", mes_principal, mes_comparacao, f"Prioridade — {mes_comparacao} x {mes_principal}", top=5, altura=235),
             use_container_width=True,
             config=plot_config(),
         )
@@ -1053,19 +1081,19 @@ if modo == "Único mês":
 else:
     with op1:
         st.plotly_chart(
-            grafico_comp_categoria(df_principal, df_comp, "Setor", mes_principal, mes_comparacao, f"Setores — {mes_principal} x {mes_comparacao}", top=5, altura=265),
+            grafico_comp_categoria(df_principal, df_comp, "Setor", mes_principal, mes_comparacao, f"Setores — {mes_comparacao} x {mes_principal}", top=5, altura=265),
             use_container_width=True,
             config=plot_config(),
         )
     with op2:
         st.plotly_chart(
-            grafico_comp_categoria(df_principal, df_comp, "Tipo", mes_principal, mes_comparacao, f"Motivos/tipos — {mes_principal} x {mes_comparacao}", top=5, altura=265),
+            grafico_comp_categoria(df_principal, df_comp, "Tipo", mes_principal, mes_comparacao, f"Motivos/tipos — {mes_comparacao} x {mes_principal}", top=5, altura=265),
             use_container_width=True,
             config=plot_config(),
         )
     with op3:
         st.plotly_chart(
-            grafico_comp_categoria(df_principal, df_comp, "Empresa_Padronizada", mes_principal, mes_comparacao, f"Clientes — {mes_principal} x {mes_comparacao}", top=5, altura=265),
+            grafico_comp_categoria(df_principal, df_comp, "Empresa_Padronizada", mes_principal, mes_comparacao, f"Clientes — {mes_comparacao} x {mes_principal}", top=5, altura=265),
             use_container_width=True,
             config=plot_config(),
         )
@@ -1128,9 +1156,12 @@ if modo == "Comparação":
     with c3:
         delta_sla = kpi_princ["sla"] - kpi_comp["sla"]
         delta_ret = kpi_princ["retorno_1h"] - kpi_comp["retorno_1h"]
+        classe_sla = "delta-pos" if delta_sla > 0 else "delta-neg" if delta_sla < 0 else "delta-neutral"
+        classe_ret = "delta-pos" if delta_ret > 0 else "delta-neg" if delta_ret < 0 else "delta-neutral"
         alerta(
             "Qualidade vs mês comparado",
-            f"SLA: {delta_sla:+.1f} p.p.<br>1º retorno: {delta_ret:+.1f} p.p.".replace(".", ",")
+            f'SLA: <span class="{classe_sla}">{delta_sla:+.1f} p.p.</span><br>'
+            f'1º retorno: <span class="{classe_ret}">{delta_ret:+.1f} p.p.</span>'.replace(".", ",")
         )
 
 
