@@ -39,20 +39,20 @@ st.markdown(
         .top-header {
             background: linear-gradient(135deg, #0f172a, #1e3a8a);
             color: white;
-            padding: 15px 22px;
-            border-radius: 14px;
-            margin-bottom: 10px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            margin-bottom: 8px;
         }
 
         .top-header h1 {
             margin: 0;
-            font-size: 25px;
+            font-size: 21px;
             font-weight: 900;
         }
 
         .top-header p {
-            margin: 4px 0 0 0;
-            font-size: 13px;
+            margin: 3px 0 0 0;
+            font-size: 11px;
             color: #dbeafe;
         }
 
@@ -783,7 +783,7 @@ st.markdown(
     f"""
     <div class="top-header">
         <h1>📊 Dashboard CEO — Suporte / Help Desk</h1>
-        <p>Painel compacto para acompanhar chamados, SLA, primeiro retorno, clientes críticos e evolução mensal.</p>
+        <p>Chamados, SLA, primeiro retorno, clientes críticos e evolução mensal.</p>
     </div>
     """,
     unsafe_allow_html=True,
