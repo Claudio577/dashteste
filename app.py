@@ -31,6 +31,7 @@ st.markdown(
         .main .block-container {
             padding-top: 2rem;
             padding-bottom: 2rem;
+            max-width: 1500px;
         }
 
         .title-box {
@@ -56,8 +57,9 @@ st.markdown(
             padding: 22px;
             border-radius: 18px;
             color: white;
-            min-height: 155px;
+            min-height: 165px;
             box-shadow: 0px 10px 25px rgba(15, 23, 42, 0.16);
+            margin-bottom: 14px;
         }
 
         .kpi-title {
@@ -112,6 +114,10 @@ st.markdown(
             color: #64748b;
             font-size: 13px;
         }
+
+        div[data-testid="stDataFrame"] {
+            border-radius: 12px;
+        }
     </style>
     """,
     unsafe_allow_html=True,
@@ -158,6 +164,13 @@ def formatar_horas(valor, casas=1):
     if valor is None or pd.isna(valor):
         return "-"
     return f"{valor:.{casas}f}h".replace(".", ",")
+
+
+def encurtar_texto(texto, limite=45):
+    texto = str(texto)
+    if len(texto) <= limite:
+        return texto
+    return texto[:limite - 3] + "..."
 
 
 def criar_card(titulo, valor, subtitulo, cor):
@@ -467,8 +480,6 @@ def carregar_dados_api(data_inicio: str, data_fim: str):
     Exemplo futuro:
     GET /chamados?data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD
     """
-    import requests
-
     return pd.DataFrame()
 
 
@@ -842,9 +853,12 @@ def grafico_top_barra(df, coluna, titulo, top=10):
         title=titulo,
     )
 
+    fig.update_traces(textposition="inside")
+
     fig.update_layout(
-        height=420,
+        height=max(420, 42 * len(dados) + 150),
         yaxis={"categoryorder": "total ascending"},
+        margin=dict(l=20, r=35, t=70, b=40),
     )
 
     return fig
@@ -872,6 +886,81 @@ def grafico_prioridade(df, titulo):
     fig.update_layout(height=420)
 
     return fig
+
+
+def grafico_comparacao_categoria(df_principal, df_comp, coluna, mes_principal, mes_comparacao, titulo, top=10):
+    if df_principal.empty and df_comp.empty:
+        return go.Figure()
+
+    atual = (
+        df_principal.groupby(coluna)
+        .size()
+        .reset_index(name=mes_principal)
+    )
+
+    comparado = (
+        df_comp.groupby(coluna)
+        .size()
+        .reset_index(name=mes_comparacao)
+    )
+
+    dados = pd.merge(comparado, atual, on=coluna, how="outer").fillna(0)
+
+    dados[mes_principal] = dados[mes_principal].astype(int)
+    dados[mes_comparacao] = dados[mes_comparacao].astype(int)
+
+    dados["Total"] = dados[mes_principal] + dados[mes_comparacao]
+
+    dados = (
+        dados.sort_values("Total", ascending=False)
+        .head(top)
+        .copy()
+    )
+
+    dados["Categoria_Curta"] = dados[coluna].apply(lambda x: encurtar_texto(x, 45))
+
+    dados_melt = dados.melt(
+        id_vars=["Categoria_Curta"],
+        value_vars=[mes_comparacao, mes_principal],
+        var_name="Mês",
+        value_name="Chamados"
+    )
+
+    fig = px.bar(
+        dados_melt,
+        x="Chamados",
+        y="Categoria_Curta",
+        color="Mês",
+        barmode="group",
+        orientation="h",
+        text="Chamados",
+        title=titulo,
+    )
+
+    fig.update_traces(textposition="outside")
+
+    fig.update_layout(
+        height=max(430, 45 * len(dados) + 160),
+        yaxis={"categoryorder": "total ascending"},
+        yaxis_title=coluna,
+        xaxis_title="Chamados",
+        legend_title_text="Mês",
+        margin=dict(l=20, r=35, t=70, b=40),
+    )
+
+    return fig
+
+
+def grafico_prioridade_comparacao(df_principal, df_comp, mes_principal, mes_comparacao):
+    return grafico_comparacao_categoria(
+        df_principal=df_principal,
+        df_comp=df_comp,
+        coluna="Prioridade",
+        mes_principal=mes_principal,
+        mes_comparacao=mes_comparacao,
+        titulo=f"Chamados por Prioridade — {mes_principal} x {mes_comparacao}",
+        top=10
+    )
 
 
 # ============================================================
@@ -1202,53 +1291,112 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-base_visual = df_principal
+if modo == "Único mês":
+    base_visual = df_principal
 
-col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-with col1:
-    st.plotly_chart(
-        grafico_top_barra(
-            base_visual,
-            "Setor",
-            f"Chamados por Setor — {mes_principal}",
-            top=10,
-        ),
-        use_container_width=True,
-    )
+    with col1:
+        st.plotly_chart(
+            grafico_top_barra(
+                base_visual,
+                "Setor",
+                f"Chamados por Setor — {mes_principal}",
+                top=10,
+            ),
+            use_container_width=True,
+        )
 
-with col2:
-    st.plotly_chart(
-        grafico_prioridade(
-            base_visual,
-            f"Chamados por Prioridade — {mes_principal}",
-        ),
-        use_container_width=True,
-    )
+    with col2:
+        st.plotly_chart(
+            grafico_prioridade(
+                base_visual,
+                f"Chamados por Prioridade — {mes_principal}",
+            ),
+            use_container_width=True,
+        )
 
-col3, col4 = st.columns(2)
+    col3, col4 = st.columns(2)
 
-with col3:
-    st.plotly_chart(
-        grafico_top_barra(
-            base_visual,
-            "Empresa_Padronizada",
-            f"Top Clientes — {mes_principal}",
-            top=10,
-        ),
-        use_container_width=True,
-    )
+    with col3:
+        st.plotly_chart(
+            grafico_top_barra(
+                base_visual,
+                "Empresa_Padronizada",
+                f"Top Clientes — {mes_principal}",
+                top=10,
+            ),
+            use_container_width=True,
+        )
 
-with col4:
-    st.plotly_chart(
-        grafico_top_barra(
-            base_visual,
-            "Tipo",
-            f"Top Motivos / Tipos — {mes_principal}",
-            top=10,
-        ),
-        use_container_width=True,
-    )
+    with col4:
+        st.plotly_chart(
+            grafico_top_barra(
+                base_visual,
+                "Tipo",
+                f"Top Motivos / Tipos — {mes_principal}",
+                top=10,
+            ),
+            use_container_width=True,
+        )
+
+else:
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.plotly_chart(
+            grafico_comparacao_categoria(
+                df_principal,
+                df_comp,
+                "Setor",
+                mes_principal,
+                mes_comparacao,
+                f"Chamados por Setor — {mes_principal} x {mes_comparacao}",
+                top=10,
+            ),
+            use_container_width=True,
+        )
+
+    with col2:
+        st.plotly_chart(
+            grafico_prioridade_comparacao(
+                df_principal,
+                df_comp,
+                mes_principal,
+                mes_comparacao,
+            ),
+            use_container_width=True,
+        )
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.plotly_chart(
+            grafico_comparacao_categoria(
+                df_principal,
+                df_comp,
+                "Empresa_Padronizada",
+                mes_principal,
+                mes_comparacao,
+                f"Top Clientes — {mes_principal} x {mes_comparacao}",
+                top=10,
+            ),
+            use_container_width=True,
+        )
+
+    with col4:
+        st.plotly_chart(
+            grafico_comparacao_categoria(
+                df_principal,
+                df_comp,
+                "Tipo",
+                mes_principal,
+                mes_comparacao,
+                f"Top Motivos / Tipos — {mes_principal} x {mes_comparacao}",
+                top=10,
+            ),
+            use_container_width=True,
+        )
 
 
 # ============================================================
@@ -1262,36 +1410,59 @@ if modo == "Comparação":
     )
 
     ranking = ranking_clientes_aumento(df_principal, df_comp)
-    ranking_pos = ranking[ranking["Diferenca"] > 0].copy().head(15)
+    ranking_pos = ranking[ranking["Diferenca"] > 0].copy().head(10)
 
     if ranking_pos.empty:
         st.info("Nenhum cliente apresentou aumento de chamados no período comparado.")
     else:
-        ranking_exibir = ranking_pos.copy()
-        ranking_exibir["Variacao_%"] = ranking_exibir["Variacao_%"].round(1)
+        tabela = ranking_pos.copy()
 
-        ranking_exibir = ranking_exibir.rename(columns={
+        tabela["Variação %"] = tabela["Variacao_%"].apply(
+            lambda x: "-" if pd.isna(x) else f"{x:.1f}%".replace(".", ",")
+        )
+
+        tabela = tabela.rename(columns={
             "Empresa_Padronizada": "Empresa",
             "Chamados_Mes_Comparado": f"Chamados {mes_comparacao}",
             "Chamados_Mes_Principal": f"Chamados {mes_principal}",
-            "Diferenca": "Diferença",
-            "Variacao_%": "Variação %",
+            "Diferenca": "Aumento",
         })
 
-        st.dataframe(ranking_exibir, use_container_width=True)
+        tabela = tabela[
+            [
+                "Empresa",
+                f"Chamados {mes_comparacao}",
+                f"Chamados {mes_principal}",
+                "Aumento",
+                "Variação %",
+            ]
+        ]
 
-        fig = px.bar(
-            ranking_pos.head(10),
-            x="Diferenca",
-            y="Empresa_Padronizada",
-            orientation="h",
-            text="Diferenca",
-            title=f"Top clientes com maior aumento — {mes_principal} x {mes_comparacao}",
+        st.dataframe(tabela, use_container_width=True, hide_index=True)
+
+        grafico = ranking_pos.head(8).copy()
+        grafico["Empresa_Curta"] = grafico["Empresa_Padronizada"].apply(
+            lambda x: encurtar_texto(x, 42)
         )
 
+        fig = px.bar(
+            grafico,
+            x="Diferenca",
+            y="Empresa_Curta",
+            orientation="h",
+            text="Diferenca",
+            title=f"Maiores aumentos de chamados — {mes_principal} x {mes_comparacao}",
+        )
+
+        fig.update_traces(texttemplate="+%{text}", textposition="outside")
+
         fig.update_layout(
-            height=430,
+            height=450,
             yaxis={"categoryorder": "total ascending"},
+            xaxis_title="Aumento de chamados",
+            yaxis_title="Cliente",
+            showlegend=False,
+            margin=dict(l=20, r=35, t=70, b=40),
         )
 
         st.plotly_chart(fig, use_container_width=True)
