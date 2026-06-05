@@ -782,7 +782,7 @@ def tabela_aumentos(df_principal, df_comp, mes_principal, mes_comparacao, n=6):
 st.markdown(
     f"""
     <div class="top-header">
-        <h1>📊 Dashboard CEO — Suporte / Help Desk <span class="version-badge">{VERSAO_APP}</span></h1>
+        <h1>📊 Dashboard CEO — Suporte / Help Desk</h1>
         <p>Painel compacto para acompanhar chamados, SLA, primeiro retorno, clientes críticos e evolução mensal.</p>
     </div>
     """,
@@ -1128,4 +1128,4 @@ with st.expander("🧪 Conferência por mês"):
 with st.expander("🔎 Ver amostra dos dados tratados"):
     st.dataframe(df_base.head(100), use_container_width=True)
 
-st.caption(f"Dashboard {VERSAO_APP} preparado para Excel via upload e futura integração com API usando somente GET.")
+st.caption("Dashboard preparado para Excel via upload e futura integração com API usando somente GET.")
