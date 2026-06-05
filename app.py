@@ -1,7 +1,7 @@
 import re
 import unicodedata
 from io import BytesIO
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -9,484 +9,1335 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+
+# ============================================================
+# CONFIGURAÇÃO DA PÁGINA
+# ============================================================
+
 st.set_page_config(
     page_title="Dashboard CEO — Suporte / Help Desk",
     page_icon="📊",
     layout="wide",
 )
 
-st.markdown("""
-<style>
-.block-container {padding-top: 1.5rem; padding-bottom: 2rem;}
-.title-box {background: linear-gradient(135deg,#111827,#1f2937); padding: 25px 30px; border-radius: 18px; color: white; margin-bottom: 18px;}
-.title-box h1 {margin:0; font-size:32px;}
-.title-box p {margin-top:8px; color:#d1d5db; font-size:16px;}
-.kpi-card {padding:20px; border-radius:18px; color:white; min-height:142px; box-shadow:0 10px 25px rgba(15,23,42,.16);}
-.kpi-title {font-size:12px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; opacity:.92;}
-.kpi-value {font-size:34px; font-weight:900; margin-top:10px; line-height:1.1;}
-.kpi-subtitle {font-size:13px; opacity:.95; margin-top:9px; line-height:1.35;}
-.section-title {font-size:24px; font-weight:900; color:#0f172a; margin-top:28px; margin-bottom:8px;}
-.section-line {width:185px; height:4px; border-radius:99px; background:#64748b; margin-bottom:18px;}
-.alert-box {border:1px solid #e5e7eb; border-radius:16px; padding:18px; background:#fff; box-shadow:0 6px 16px rgba(15,23,42,.06); min-height:95px;}
-.small-muted {color:#64748b; font-size:13px;}
-</style>
-""", unsafe_allow_html=True)
+
+# ============================================================
+# ESTILO
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+        .main .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+
+        .title-box {
+            background: linear-gradient(135deg, #111827, #1f2937);
+            padding: 26px 30px;
+            border-radius: 18px;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        .title-box h1 {
+            margin: 0;
+            font-size: 32px;
+        }
+
+        .title-box p {
+            margin-top: 8px;
+            color: #d1d5db;
+            font-size: 16px;
+        }
+
+        .kpi-card {
+            padding: 22px;
+            border-radius: 18px;
+            color: white;
+            min-height: 145px;
+            box-shadow: 0px 10px 25px rgba(15, 23, 42, 0.16);
+        }
+
+        .kpi-title {
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: .7px;
+            text-transform: uppercase;
+            opacity: .9;
+        }
+
+        .kpi-value {
+            font-size: 34px;
+            font-weight: 900;
+            margin-top: 10px;
+            line-height: 1.1;
+        }
+
+        .kpi-subtitle {
+            font-size: 13px;
+            opacity: .95;
+            margin-top: 10px;
+            line-height: 1.35;
+        }
+
+        .section-title {
+            font-size: 24px;
+            font-weight: 900;
+            color: #0f172a;
+            margin-top: 28px;
+            margin-bottom: 8px;
+        }
+
+        .section-line {
+            width: 185px;
+            height: 4px;
+            border-radius: 99px;
+            background: #64748b;
+            margin-bottom: 18px;
+        }
+
+        .alert-box {
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 18px;
+            background: #ffffff;
+            box-shadow: 0px 6px 16px rgba(15, 23, 42, 0.06);
+            min-height: 95px;
+        }
+
+        .small-muted {
+            color: #64748b;
+            font-size: 13px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
-def normalizar_texto(valor) -> str:
-    if pd.isna(valor):
+# ============================================================
+# FUNÇÕES UTILITÁRIAS
+# ============================================================
+
+def normalizar_texto(texto) -> str:
+    if pd.isna(texto):
         return ""
-    texto = str(valor).strip()
+    texto = str(texto).strip()
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c))
     texto = re.sub(r"\s+", " ", texto)
     return texto.lower()
 
 
-def limpar_coluna(coluna: str) -> str:
+def limpar_nome_coluna(coluna: str) -> str:
     col = normalizar_texto(coluna)
     col = col.replace("º", "").replace("°", "")
     col = re.sub(r"[^a-z0-9 ]", " ", col)
-    return re.sub(r"\s+", " ", col).strip()
+    col = re.sub(r"\s+", " ", col).strip()
+    return col
 
 
-def fmt_num(v):
-    if v is None or pd.isna(v):
+def formatar_numero(valor, casas=0):
+    if valor is None or pd.isna(valor):
         return "-"
-    return f"{int(round(v)):,}".replace(",", ".")
+    if casas == 0:
+        return f"{int(round(valor)):,}".replace(",", ".")
+    return f"{valor:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def fmt_pct(v):
-    if v is None or pd.isna(v):
+def formatar_percentual(valor, casas=1):
+    if valor is None or pd.isna(valor):
         return "-"
-    return f"{v:.1f}%".replace(".", ",")
+    return f"{valor:.{casas}f}%".replace(".", ",")
 
 
-def fmt_h(v):
-    if v is None or pd.isna(v):
+def formatar_horas(valor, casas=1):
+    if valor is None or pd.isna(valor):
         return "-"
-    return f"{v:.1f}h".replace(".", ",")
+    return f"{valor:.{casas}f}h".replace(".", ",")
 
 
-def delta_texto(atual, comp, tipo="num"):
-    if comp is None or pd.isna(comp):
-        return "Sem comparação"
-    diff = atual - comp
-    if tipo == "pp":
-        return f"Comparado: {fmt_pct(comp)} | {diff:+.1f} p.p.".replace(".", ",")
-    if tipo == "h":
-        return f"Comparado: {fmt_h(comp)} | {diff:+.1f}h".replace(".", ",")
-    if comp != 0:
-        var = diff / comp * 100
-        return f"Comparado: {fmt_num(comp)} | {diff:+.0f} ({var:+.1f}%)".replace(".", ",")
-    return f"Comparado: {fmt_num(comp)} | {diff:+.0f}".replace(".", ",")
+def calcular_variacao(valor_atual, valor_comp):
+    if valor_comp in [0, None] or pd.isna(valor_comp):
+        return None
+    return ((valor_atual - valor_comp) / valor_comp) * 100
 
 
-def card(titulo, valor, subtitulo, cor):
-    st.markdown(f"""
-    <div class="kpi-card" style="background:{cor};">
-        <div class="kpi-title">{titulo}</div>
-        <div class="kpi-value">{valor}</div>
-        <div class="kpi-subtitle">{subtitulo}</div>
-    </div>
-    """, unsafe_allow_html=True)
+def texto_delta(valor_atual, valor_comp, sufixo="", percentual=True, pp=False, horas=False):
+    if valor_comp is None or pd.isna(valor_comp):
+        return "Sem mês comparado"
+
+    diff = valor_atual - valor_comp
+
+    if pp:
+        return f"Comparado: {formatar_percentual(valor_comp)} | {diff:+.1f} p.p.".replace(".", ",")
+
+    if horas:
+        return f"Comparado: {formatar_horas(valor_comp)} | {diff:+.1f}h".replace(".", ",")
+
+    if percentual and valor_comp != 0:
+        var = calcular_variacao(valor_atual, valor_comp)
+        return f"Comparado: {formatar_numero(valor_comp)} | {diff:+.0f} {sufixo} ({var:+.1f}%)".replace(".", ",")
+
+    return f"Comparado: {formatar_numero(valor_comp)} | {diff:+.0f} {sufixo}".replace(".", ",")
 
 
-CANDIDATOS = {
-    "id": ["solicitacao", "solicitacao codigo", "codigo", "protocolo", "ticket", "id", "numero chamado", "chamado"],
-    "empresa": ["empresa", "cliente", "razao social", "nome empresa", "nome do cliente"],
-    "abertura": ["abertura", "data abertura", "data de abertura", "criado em", "data criacao", "inicio"],
-    "retorno": ["1 retorno", "primeiro retorno", "data primeiro retorno", "primeira resposta", "1 resposta"],
-    "vencimento": ["vencimento", "data vencimento", "data de vencimento", "sla vencimento", "prazo"],
-    "encerramento": ["encerramento", "data encerramento", "data de encerramento", "finalizado em", "fechado em", "conclusao"],
+def criar_card(titulo, valor, subtitulo, cor):
+    st.markdown(
+        f"""
+        <div class="kpi-card" style="background:{cor};">
+            <div class="kpi-title">{titulo}</div>
+            <div class="kpi-value">{valor}</div>
+            <div class="kpi-subtitle">{subtitulo}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================
+# MAPEAMENTO DE COLUNAS
+# ============================================================
+
+CANDIDATOS_COLUNAS = {
+    "id_chamado": [
+        "solicitacao", "solicitação", "codigo", "código", "protocolo",
+        "ticket", "id", "id chamado", "numero chamado", "n chamado", "chamado"
+    ],
+    "empresa": [
+        "empresa", "cliente", "razao social", "razão social", "nome empresa",
+        "empresa cliente", "nome do cliente", "cliente empresa"
+    ],
+    "abertura": [
+        "abertura", "data abertura", "data de abertura", "criado em",
+        "data criacao", "data de criacao", "início", "inicio"
+    ],
+    "primeiro_retorno": [
+        "1 retorno", "primeiro retorno", "data primeiro retorno",
+        "primeira resposta", "1 resposta", "data 1 retorno"
+    ],
+    "vencimento": [
+        "vencimento", "data vencimento", "data de vencimento",
+        "sla vencimento", "prazo", "data prazo"
+    ],
+    "encerramento": [
+        "encerramento", "data encerramento", "data de encerramento",
+        "finalizado em", "fechado em", "conclusao", "conclusão", "data conclusao"
+    ],
     "status": ["status", "estado"],
-    "prioridade": ["prioridade", "criticidade", "urgencia"],
-    "setor": ["setor de atendimento", "setor atendimento", "setor", "area", "departamento", "fila"],
-    "responsavel": ["responsavel", "atendente", "tecnico", "agente", "operador"],
+    "prioridade": ["prioridade", "criticidade", "urgencia", "urgência"],
+    "setor": [
+        "setor de atendimento", "setor atendimento", "setor",
+        "area", "área", "departamento", "fila"
+    ],
+    "responsavel": [
+        "responsavel", "responsável", "atendente", "tecnico",
+        "técnico", "agente", "operador"
+    ],
     "tipo": ["tipo", "tipo chamado", "tipo de chamado"],
-    "item": ["item", "item chamado", "servico", "produto"],
-    "categoria": ["categoria"],
+    "item": ["item", "item chamado", "item de chamado", "servico", "serviço", "produto"],
+    "categoria": ["categoria", "categoria chamado", "categoria de chamado"],
     "situacao": ["situacao", "situação"],
-    "assunto": ["assunto", "titulo", "descricao", "resumo"],
+    "assunto": ["assunto", "titulo", "título", "descricao", "descrição", "resumo"],
     "avaliacao": ["avaliacao", "avaliação", "nota", "satisfacao", "satisfação"],
-    "horas": ["horas consumidas", "horas", "tempo consumido", "tempo gasto"],
+    "horas_consumidas": [
+        "horas consumidas", "horas", "tempo consumido",
+        "tempo gasto", "horas gastas"
+    ],
 }
 
-PADRAO = {
-    "id": "ID_Chamado",
-    "empresa": "Empresa",
-    "abertura": "Abertura",
-    "retorno": "Primeiro_Retorno",
-    "vencimento": "Vencimento",
-    "encerramento": "Encerramento",
-    "status": "Status",
-    "prioridade": "Prioridade",
-    "setor": "Setor",
-    "responsavel": "Responsavel",
-    "tipo": "Tipo",
-    "item": "Item",
-    "categoria": "Categoria",
-    "situacao": "Situacao",
-    "assunto": "Assunto",
-    "avaliacao": "Avaliacao",
-    "horas": "Horas_Consumidas",
-}
+
+def mapear_colunas(df: pd.DataFrame) -> Dict[str, Optional[str]]:
+    colunas_originais = list(df.columns)
+    colunas_limpas = {col: limpar_nome_coluna(col) for col in colunas_originais}
+
+    mapeamento = {}
+
+    for destino, candidatos in CANDIDATOS_COLUNAS.items():
+        candidatos_limpos = [limpar_nome_coluna(c) for c in candidatos]
+        encontrado = None
+
+        for col_original, col_limpa in colunas_limpas.items():
+            if col_limpa in candidatos_limpos:
+                encontrado = col_original
+                break
+
+        if encontrado is None:
+            for col_original, col_limpa in colunas_limpas.items():
+                for cand in candidatos_limpos:
+                    if cand and (cand in col_limpa or col_limpa in cand):
+                        encontrado = col_original
+                        break
+                if encontrado:
+                    break
+
+        mapeamento[destino] = encontrado
+
+    return mapeamento
+
+
+def renomear_colunas_padrao(df: pd.DataFrame, mapeamento: Dict[str, Optional[str]]) -> pd.DataFrame:
+    renomear = {}
+
+    nomes_padrao = {
+        "id_chamado": "ID_Chamado",
+        "empresa": "Empresa",
+        "abertura": "Abertura",
+        "primeiro_retorno": "Primeiro_Retorno",
+        "vencimento": "Vencimento",
+        "encerramento": "Encerramento",
+        "status": "Status",
+        "prioridade": "Prioridade",
+        "setor": "Setor",
+        "responsavel": "Responsavel",
+        "tipo": "Tipo",
+        "item": "Item",
+        "categoria": "Categoria",
+        "situacao": "Situacao",
+        "assunto": "Assunto",
+        "avaliacao": "Avaliacao",
+        "horas_consumidas": "Horas_Consumidas",
+    }
+
+    for destino, origem in mapeamento.items():
+        if origem is not None and origem in df.columns:
+            renomear[origem] = nomes_padrao[destino]
+
+    df = df.rename(columns=renomear)
+
+    for col in nomes_padrao.values():
+        if col not in df.columns:
+            df[col] = np.nan
+
+    return df
+
+
+# ============================================================
+# TRATAMENTO DE DADOS
+# ============================================================
 
 MESES_PT = {
-    "janeiro": 1, "jan": 1, "fevereiro": 2, "fev": 2, "marco": 3, "março": 3, "mar": 3,
-    "abril": 4, "abr": 4, "maio": 5, "mai": 5, "junho": 6, "jun": 6, "julho": 7, "jul": 7,
-    "agosto": 8, "ago": 8, "setembro": 9, "set": 9, "outubro": 10, "out": 10,
-    "novembro": 11, "nov": 11, "dezembro": 12, "dez": 12,
+    "janeiro": 1, "jan": 1,
+    "fevereiro": 2, "fev": 2,
+    "marco": 3, "março": 3, "mar": 3,
+    "abril": 4, "abr": 4,
+    "maio": 5, "mai": 5,
+    "junho": 6, "jun": 6,
+    "julho": 7, "jul": 7,
+    "agosto": 8, "ago": 8,
+    "setembro": 9, "set": 9,
+    "outubro": 10, "out": 10,
+    "novembro": 11, "nov": 11,
+    "dezembro": 12, "dez": 12,
 }
-MESES_NOME = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+
+MESES_NOME = {
+    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
+}
 
 
-def achar_coluna(df, candidatos):
-    limpas = {c: limpar_coluna(c) for c in df.columns}
-    cands = [limpar_coluna(c) for c in candidatos]
-    for original, limpa in limpas.items():
-        if limpa in cands:
-            return original
-    for original, limpa in limpas.items():
-        for cand in cands:
-            if cand and (cand in limpa or limpa in cand):
-                return original
-    return None
+def extrair_mes_arquivo(nome_arquivo: str) -> Tuple[Optional[int], Optional[int]]:
+    nome = normalizar_texto(nome_arquivo)
 
-
-def mapear_colunas(df):
-    mapa = {k: achar_coluna(df, v) for k, v in CANDIDATOS.items()}
-    return mapa
-
-
-def mes_do_nome(nome) -> Tuple[Optional[int], Optional[int]]:
-    nome_norm = normalizar_texto(nome)
-    ano_match = re.search(r"(20\d{2})", nome_norm)
+    ano_match = re.search(r"(20\d{2})", nome)
     ano = int(ano_match.group(1)) if ano_match else None
+
     mes = None
-    for nome_mes, num in MESES_PT.items():
-        if nome_mes in nome_norm:
-            mes = num
+    for nome_mes, num_mes in MESES_PT.items():
+        if nome_mes in nome:
+            mes = num_mes
             break
+
     if mes and not ano:
         ano = 2026
+
     return mes, ano
 
 
-def padronizar_empresa(v):
-    if pd.isna(v) or str(v).strip() == "":
+def converter_data(serie):
+    return pd.to_datetime(serie, errors="coerce", dayfirst=True)
+
+
+def padronizar_empresa(valor):
+    if pd.isna(valor) or str(valor).strip() == "":
         return "Não informado"
-    original = re.sub(r"\s+", " ", str(v).strip())
-    upper = normalizar_texto(original).upper()
-    if "CBLOC" in upper or "ACBLOC" in upper:
+
+    texto_original = str(valor).strip()
+    texto_limpo = normalizar_texto(texto_original).upper()
+
+    if "CBLOC" in texto_limpo or "ACBLOC" in texto_limpo:
         return "CBLOC"
-    return original.title()
+
+    texto_original = re.sub(r"\s+", " ", texto_original)
+    return texto_original.title()
 
 
-def preparar_df(df, nome_arquivo):
+def preparar_dataframe(df: pd.DataFrame, nome_arquivo: str) -> Tuple[pd.DataFrame, Dict[str, Optional[str]]]:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
-    mapa = mapear_colunas(df)
-    ren = {origem: PADRAO[k] for k, origem in mapa.items() if origem is not None and origem in df.columns}
-    df = df.rename(columns=ren)
-    for col in PADRAO.values():
-        if col not in df.columns:
-            df[col] = np.nan
+
+    mapeamento = mapear_colunas(df)
+    df = renomear_colunas_padrao(df, mapeamento)
+
     df["Arquivo_Origem"] = nome_arquivo
+
     for col in ["Abertura", "Primeiro_Retorno", "Vencimento", "Encerramento"]:
-        df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+        df[col] = converter_data(df[col])
+
+    mes_arquivo, ano_arquivo = extrair_mes_arquivo(nome_arquivo)
+
     if df["Abertura"].notna().any():
         df["Ano"] = df["Abertura"].dt.year
         df["Mes"] = df["Abertura"].dt.month
     else:
-        mes, ano = mes_do_nome(nome_arquivo)
-        df["Ano"] = ano
-        df["Mes"] = mes
-    mes_nome, ano_nome = mes_do_nome(nome_arquivo)
-    if mes_nome and ano_nome:
-        df["Mes"] = df["Mes"].fillna(mes_nome)
-        df["Ano"] = df["Ano"].fillna(ano_nome)
+        df["Ano"] = ano_arquivo
+        df["Mes"] = mes_arquivo
+
+    if mes_arquivo and ano_arquivo:
+        df["Mes"] = df["Mes"].fillna(mes_arquivo)
+        df["Ano"] = df["Ano"].fillna(ano_arquivo)
+
     df["Ano"] = df["Ano"].fillna(2026).astype(int)
     df["Mes"] = df["Mes"].fillna(1).astype(int)
+
     df["AnoMesNum"] = df["Ano"] * 100 + df["Mes"]
     df["MesAno"] = df["Mes"].map(MESES_NOME) + "/" + df["Ano"].astype(str)
+
     df["Empresa_Padronizada"] = df["Empresa"].apply(padronizar_empresa)
-    for col in ["Status", "Prioridade", "Setor", "Responsavel", "Tipo", "Item", "Categoria", "Situacao", "Assunto", "Avaliacao"]:
-        df[col] = df[col].fillna("Não informado").astype(str).str.strip().replace({"": "Não informado"})
-    return df, mapa
+
+    for col in [
+        "Status", "Prioridade", "Setor", "Responsavel", "Tipo",
+        "Item", "Categoria", "Situacao", "Assunto", "Avaliacao"
+    ]:
+        df[col] = df[col].fillna("Não informado").astype(str).str.strip()
+        df[col] = df[col].replace({"": "Não informado"})
+
+    return df, mapeamento
 
 
-def carregar_dados_excel(uploaded_files):
-    dfs = []
+def carregar_dados_excel(uploaded_files) -> Tuple[pd.DataFrame, List[str], Dict[str, Dict[str, Optional[str]]]]:
+    lista = []
     arquivos = []
     mapas = {}
-    for up in uploaded_files:
-        nome = up.name
+
+    for uploaded in uploaded_files:
+        nome = uploaded.name
         arquivos.append(nome)
+
         try:
-            data = up.read()
-            bio = BytesIO(data)
-            engine = "xlrd" if nome.lower().endswith(".xls") else "openpyxl"
-            bruto = pd.read_excel(bio, engine=engine)
-            tratado, mapa = preparar_df(bruto, nome)
-            dfs.append(tratado)
+            bytes_data = uploaded.read()
+            bio = BytesIO(bytes_data)
+
+            if nome.lower().endswith(".xls"):
+                df = pd.read_excel(bio, engine="xlrd")
+            else:
+                df = pd.read_excel(bio, engine="openpyxl")
+
+            df, mapa = preparar_dataframe(df, nome)
             mapas[nome] = mapa
+            lista.append(df)
+
         except Exception as e:
-            st.error(f"Erro ao ler {nome}: {e}")
-    if not dfs:
+            st.error(f"Erro ao ler o arquivo {nome}: {e}")
+
+    if not lista:
         return pd.DataFrame(), arquivos, mapas
-    return pd.concat(dfs, ignore_index=True).dropna(how="all"), arquivos, mapas
+
+    df_final = pd.concat(lista, ignore_index=True)
+    df_final = df_final.dropna(how="all")
+
+    return df_final, arquivos, mapas
 
 
 def carregar_dados_api(data_inicio: str, data_fim: str):
-    """Preparado para uso futuro. Usar apenas GET: /chamados?data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD"""
+    """
+    Função preparada para uso futuro via API.
+
+    Importante:
+    - Usar apenas GET.
+    - Não usar POST, PUT, PATCH ou DELETE.
+
+    Exemplo futuro:
+    GET /chamados?data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD
+    """
     import requests
+
+    # Exemplo futuro desativado:
+    # base_url = "https://sua-api.com.br/chamados"
+    # params = {"data_inicio": data_inicio, "data_fim": data_fim}
+    # response = requests.get(base_url, params=params, timeout=30)
+    # response.raise_for_status()
+    # return pd.DataFrame(response.json())
+
     return pd.DataFrame()
 
 
-def total_chamados(df):
+# ============================================================
+# CÁLCULOS DE KPIs
+# ============================================================
+
+def total_chamados(df: pd.DataFrame) -> int:
     if df.empty:
         return 0
+
     if "ID_Chamado" in df.columns and df["ID_Chamado"].notna().any():
         ids = df["ID_Chamado"].astype(str).str.strip()
         ids = ids[~ids.isin(["", "nan", "None", "Não informado"])]
         if len(ids) > 0:
             return int(ids.nunique())
+
     return int(len(df))
 
 
-def calcular_kpis(df):
+def calcular_kpis(df: pd.DataFrame) -> Dict[str, float]:
     if df.empty:
-        return {"total": 0, "empresas": 0, "encerrados": 0, "pendentes": 0, "sla": 0.0, "retorno_1h": 0.0, "resolucao_h": 0.0, "criticos": 0, "fora_sla": 0, "sem_avaliacao": 0}
+        return {
+            "total": 0,
+            "empresas": 0,
+            "encerrados": 0,
+            "pendentes": 0,
+            "sla": 0.0,
+            "retorno_1h": 0.0,
+            "resolucao_h": 0.0,
+            "criticos": 0,
+            "fora_sla": 0,
+            "sem_avaliacao": 0,
+        }
+
     total = total_chamados(df)
-    empresas = int(df["Empresa_Padronizada"].replace("Não informado", np.nan).dropna().nunique())
-    status = df["Status"].apply(normalizar_texto)
-    encerrados_mask = df["Encerramento"].notna() | status.str.contains("encerr|finaliz|fechad|conclu", na=False)
+
+    empresas = int(
+        df["Empresa_Padronizada"]
+        .replace("Não informado", np.nan)
+        .dropna()
+        .nunique()
+    )
+
+    status_norm = df["Status"].apply(normalizar_texto)
+
+    encerrado_status = status_norm.str.contains(
+        "encerr|finaliz|fechad|conclu",
+        na=False,
+        regex=True
+    )
+
+    encerrado_data = df["Encerramento"].notna()
+    encerrados_mask = encerrado_data | encerrado_status
     encerrados = int(encerrados_mask.sum())
-    pendentes = max(int(total - encerrados), 0)
-    base_sla = int(df["Vencimento"].notna().sum())
-    dentro_sla = int((df["Vencimento"].notna() & df["Encerramento"].notna() & (df["Encerramento"] <= df["Vencimento"])).sum())
-    sla = dentro_sla / base_sla * 100 if base_sla else 0.0
+
+    pendentes = int(total - encerrados)
+    if pendentes < 0:
+        pendentes = int((~encerrados_mask).sum())
+
+    tem_datas_sla = df["Vencimento"].notna() & df["Encerramento"].notna()
+    dentro_sla_mask = tem_datas_sla & (df["Encerramento"] <= df["Vencimento"])
+
+    chamados_com_vencimento = int(df["Vencimento"].notna().sum())
+    dentro_sla = int(dentro_sla_mask.sum())
+
+    if chamados_com_vencimento > 0:
+        sla = (dentro_sla / chamados_com_vencimento) * 100
+    else:
+        sla = 0.0
+
     hoje = pd.Timestamp.today()
-    fora_sla = int(((df["Vencimento"].notna() & df["Encerramento"].notna() & (df["Encerramento"] > df["Vencimento"])) | (df["Vencimento"].notna() & df["Encerramento"].isna() & (df["Vencimento"] < hoje))).sum())
-    tem_ret = df["Abertura"].notna() & df["Primeiro_Retorno"].notna()
-    ret_min = (df["Primeiro_Retorno"] - df["Abertura"]).dt.total_seconds() / 60
-    retorno_1h = int((tem_ret & (ret_min >= 0) & (ret_min <= 60)).sum()) / int(tem_ret.sum()) * 100 if int(tem_ret.sum()) else 0.0
-    tem_res = df["Abertura"].notna() & df["Encerramento"].notna()
-    res_h = (df["Encerramento"] - df["Abertura"]).dt.total_seconds() / 3600
-    res_h = res_h[tem_res & (res_h >= 0)]
-    resolucao_h = float(res_h.mean()) if len(res_h) else 0.0
-    criticos = int(df["Prioridade"].apply(normalizar_texto).str.contains("critic", na=False).sum())
+
+    fora_sla_mask = (
+        (
+            df["Vencimento"].notna()
+            & df["Encerramento"].notna()
+            & (df["Encerramento"] > df["Vencimento"])
+        )
+        |
+        (
+            df["Vencimento"].notna()
+            & df["Encerramento"].isna()
+            & (df["Vencimento"] < hoje)
+        )
+    )
+
+    fora_sla = int(fora_sla_mask.sum())
+
+    tem_retorno = df["Abertura"].notna() & df["Primeiro_Retorno"].notna()
+
+    diff_retorno_min = (
+        df["Primeiro_Retorno"] - df["Abertura"]
+    ).dt.total_seconds() / 60
+
+    retorno_1h_count = int(
+        (
+            tem_retorno
+            & (diff_retorno_min <= 60)
+            & (diff_retorno_min >= 0)
+        ).sum()
+    )
+
+    base_retorno = int(tem_retorno.sum())
+    retorno_1h = (retorno_1h_count / base_retorno) * 100 if base_retorno > 0 else 0.0
+
+    tem_resolucao = df["Abertura"].notna() & df["Encerramento"].notna()
+
+    diff_resolucao_h = (
+        df["Encerramento"] - df["Abertura"]
+    ).dt.total_seconds() / 3600
+
+    diff_resolucao_h = diff_resolucao_h[
+        tem_resolucao & (diff_resolucao_h >= 0)
+    ]
+
+    resolucao_h = float(diff_resolucao_h.mean()) if len(diff_resolucao_h) > 0 else 0.0
+
+    prioridade_norm = df["Prioridade"].apply(normalizar_texto)
+    criticos = int(prioridade_norm.str.contains("critic", na=False).sum())
+
     aval_norm = df["Avaliacao"].astype(str).apply(normalizar_texto)
-    sem_avaliacao = int((aval_norm.isin(["", "nan", "none", "nao informado", "n/a", "na", "sem avaliacao"]) | aval_norm.str.contains("sem avaliacao", na=False)).sum())
-    return {"total": total, "empresas": empresas, "encerrados": encerrados, "pendentes": pendentes, "sla": float(sla), "retorno_1h": float(retorno_1h), "resolucao_h": float(resolucao_h), "criticos": criticos, "fora_sla": fora_sla, "sem_avaliacao": sem_avaliacao}
+
+    mask_sem_avaliacao = (
+        aval_norm.isin([
+            "",
+            "nan",
+            "none",
+            "nao informado",
+            "n/a",
+            "na",
+            "sem avaliacao"
+        ])
+        | aval_norm.str.contains("sem avaliacao", na=False)
+    )
+
+    sem_avaliacao = int(mask_sem_avaliacao.sum())
+
+    return {
+        "total": total,
+        "empresas": empresas,
+        "encerrados": encerrados,
+        "pendentes": pendentes,
+        "sla": float(sla),
+        "retorno_1h": float(retorno_1h),
+        "resolucao_h": float(resolucao_h),
+        "criticos": criticos,
+        "fora_sla": fora_sla,
+        "sem_avaliacao": sem_avaliacao,
+    }
 
 
-def meses_ordenados(df):
-    return df[["MesAno", "AnoMesNum"]].drop_duplicates().sort_values("AnoMesNum")["MesAno"].tolist()
+def filtrar_mes(df: pd.DataFrame, mes_ano: str) -> pd.DataFrame:
+    return df[df["MesAno"].astype(str) == str(mes_ano)].copy()
 
 
-def mes_anterior(df, mes_principal):
-    tab = df[["MesAno", "AnoMesNum"]].drop_duplicates().sort_values("AnoMesNum")
-    if mes_principal not in tab["MesAno"].values:
+def obter_meses_ordenados(df: pd.DataFrame) -> List[str]:
+    ordem = (
+        df[["MesAno", "AnoMesNum"]]
+        .drop_duplicates()
+        .sort_values("AnoMesNum")
+    )
+    return ordem["MesAno"].tolist()
+
+
+def mes_anterior_disponivel(df: pd.DataFrame, mes_principal: str) -> Optional[str]:
+    meses = (
+        df[["MesAno", "AnoMesNum"]]
+        .drop_duplicates()
+        .sort_values("AnoMesNum")
+    )
+
+    if mes_principal not in meses["MesAno"].values:
         return None
-    atual = int(tab.loc[tab["MesAno"] == mes_principal, "AnoMesNum"].iloc[0])
-    ants = tab[tab["AnoMesNum"] < atual]
-    return None if ants.empty else ants.iloc[-1]["MesAno"]
+
+    atual_num = int(meses.loc[meses["MesAno"] == mes_principal, "AnoMesNum"].iloc[0])
+    anteriores = meses[meses["AnoMesNum"] < atual_num]
+
+    if anteriores.empty:
+        return None
+
+    return anteriores.iloc[-1]["MesAno"]
 
 
-def filtrar_mes(df, mes):
-    return df[df["MesAno"] == mes].copy()
+def ranking_clientes_aumento(df_principal, df_comp) -> pd.DataFrame:
+    atual = (
+        df_principal.groupby("Empresa_Padronizada")
+        .size()
+        .reset_index(name="Chamados_Mes_Principal")
+    )
+
+    comp = (
+        df_comp.groupby("Empresa_Padronizada")
+        .size()
+        .reset_index(name="Chamados_Mes_Comparado")
+    )
+
+    ranking = pd.merge(atual, comp, on="Empresa_Padronizada", how="outer").fillna(0)
+
+    ranking["Chamados_Mes_Principal"] = ranking["Chamados_Mes_Principal"].astype(int)
+    ranking["Chamados_Mes_Comparado"] = ranking["Chamados_Mes_Comparado"].astype(int)
+
+    ranking["Diferenca"] = (
+        ranking["Chamados_Mes_Principal"] - ranking["Chamados_Mes_Comparado"]
+    )
+
+    ranking["Variacao_%"] = np.where(
+        ranking["Chamados_Mes_Comparado"] > 0,
+        (ranking["Diferenca"] / ranking["Chamados_Mes_Comparado"]) * 100,
+        np.nan
+    )
+
+    ranking = ranking.sort_values(
+        ["Diferenca", "Variacao_%"],
+        ascending=[False, False]
+    )
+
+    return ranking
 
 
-def ranking_aumento(df_principal, df_comp):
-    atual = df_principal.groupby("Empresa_Padronizada").size().reset_index(name="Chamados_Mes_Principal")
-    comp = df_comp.groupby("Empresa_Padronizada").size().reset_index(name="Chamados_Mes_Comparado")
-    r = pd.merge(atual, comp, on="Empresa_Padronizada", how="outer").fillna(0)
-    r["Chamados_Mes_Principal"] = r["Chamados_Mes_Principal"].astype(int)
-    r["Chamados_Mes_Comparado"] = r["Chamados_Mes_Comparado"].astype(int)
-    r["Diferenca"] = r["Chamados_Mes_Principal"] - r["Chamados_Mes_Comparado"]
-    r["Variacao_%"] = np.where(r["Chamados_Mes_Comparado"] > 0, r["Diferenca"] / r["Chamados_Mes_Comparado"] * 100, np.nan)
-    return r.sort_values(["Diferenca", "Variacao_%"], ascending=[False, False])
-
+# ============================================================
+# GRÁFICOS
+# ============================================================
 
 def grafico_resumo_unico(kpis, mes):
-    data = pd.DataFrame({"Indicador": ["Chamados", "Encerrados", "Críticos", "Pendentes"], "Quantidade": [kpis["total"], kpis["encerrados"], kpis["criticos"], kpis["pendentes"]]})
-    fig = px.bar(data, x="Indicador", y="Quantidade", text="Quantidade", title=f"Resumo Geral — {mes}")
+    dados = pd.DataFrame({
+        "Indicador": ["Chamados", "Encerrados", "Críticos", "Pendentes"],
+        "Quantidade": [
+            kpis["total"],
+            kpis["encerrados"],
+            kpis["criticos"],
+            kpis["pendentes"],
+        ],
+    })
+
+    fig = px.bar(
+        dados,
+        x="Indicador",
+        y="Quantidade",
+        text="Quantidade",
+        title=f"Resumo Geral — {mes}",
+    )
+
     fig.update_traces(textposition="outside")
     fig.update_layout(height=430, showlegend=False)
+
     return fig
 
 
-def grafico_resumo_comp(kp, kc, mp, mc):
-    data = pd.DataFrame({"Indicador": ["Chamados", "Encerrados", "Críticos", "Pendentes"] * 2, "Mês": [mc] * 4 + [mp] * 4, "Quantidade": [kc["total"], kc["encerrados"], kc["criticos"], kc["pendentes"], kp["total"], kp["encerrados"], kp["criticos"], kp["pendentes"]]})
-    fig = px.bar(data, x="Indicador", y="Quantidade", color="Mês", barmode="group", text="Quantidade", title=f"Resumo Geral — {mp} x {mc}")
+def grafico_resumo_comparacao(kpi_princ, kpi_comp, mes_princ, mes_comp):
+    dados = pd.DataFrame({
+        "Indicador": ["Chamados", "Encerrados", "Críticos", "Pendentes"] * 2,
+        "Mês": [mes_comp] * 4 + [mes_princ] * 4,
+        "Quantidade": [
+            kpi_comp["total"],
+            kpi_comp["encerrados"],
+            kpi_comp["criticos"],
+            kpi_comp["pendentes"],
+            kpi_princ["total"],
+            kpi_princ["encerrados"],
+            kpi_princ["criticos"],
+            kpi_princ["pendentes"],
+        ],
+    })
+
+    fig = px.bar(
+        dados,
+        x="Indicador",
+        y="Quantidade",
+        color="Mês",
+        barmode="group",
+        text="Quantidade",
+        title=f"Resumo Geral — {mes_princ} x {mes_comp}",
+    )
+
     fig.update_traces(textposition="outside")
     fig.update_layout(height=430)
+
     return fig
 
 
 def grafico_qualidade_unico(kpis, mes):
     fig = go.Figure()
-    fig.add_trace(go.Indicator(mode="gauge+number", value=kpis["sla"], title={"text": f"SLA Cumprido — {mes}"}, gauge={"axis": {"range": [0, 100]}, "threshold": {"line": {"width": 4}, "value": 80}}, domain={"x": [0, .45], "y": [0, 1]}))
-    fig.add_trace(go.Indicator(mode="gauge+number", value=kpis["retorno_1h"], title={"text": f"1º Retorno ≤ 1h — {mes}"}, gauge={"axis": {"range": [0, 100]}, "threshold": {"line": {"width": 4}, "value": 70}}, domain={"x": [.55, 1], "y": [0, 1]}))
+
+    fig.add_trace(go.Indicator(
+        mode="gauge+number",
+        value=kpis["sla"],
+        title={"text": f"SLA Cumprido — {mes}"},
+        gauge={
+            "axis": {"range": [0, 100]},
+            "threshold": {"line": {"width": 4}, "value": 80}
+        },
+        domain={"x": [0, 0.45], "y": [0, 1]},
+    ))
+
+    fig.add_trace(go.Indicator(
+        mode="gauge+number",
+        value=kpis["retorno_1h"],
+        title={"text": f"1º Retorno ≤ 1h — {mes}"},
+        gauge={
+            "axis": {"range": [0, 100]},
+            "threshold": {"line": {"width": 4}, "value": 70}
+        },
+        domain={"x": [0.55, 1], "y": [0, 1]},
+    ))
+
     fig.update_layout(height=380)
+
     return fig
 
 
-def grafico_qualidade_comp(kp, kc, mp, mc):
-    data = pd.DataFrame({"Indicador": ["SLA Cumprido", "1º Retorno ≤ 1h"] * 2, "Mês": [mc, mc, mp, mp], "Percentual": [kc["sla"], kc["retorno_1h"], kp["sla"], kp["retorno_1h"]]})
-    fig = px.bar(data, x="Indicador", y="Percentual", color="Mês", barmode="group", text=data["Percentual"].map(lambda x: f"{x:.1f}%"), title=f"Indicadores de Qualidade — {mp} x {mc}")
+def grafico_qualidade_comparacao(kpi_princ, kpi_comp, mes_princ, mes_comp):
+    dados = pd.DataFrame({
+        "Indicador": ["SLA Cumprido", "1º Retorno ≤ 1h"] * 2,
+        "Mês": [mes_comp, mes_comp, mes_princ, mes_princ],
+        "Percentual": [
+            kpi_comp["sla"],
+            kpi_comp["retorno_1h"],
+            kpi_princ["sla"],
+            kpi_princ["retorno_1h"],
+        ],
+    })
+
+    fig = px.bar(
+        dados,
+        x="Indicador",
+        y="Percentual",
+        color="Mês",
+        barmode="group",
+        text=dados["Percentual"].map(lambda x: f"{x:.1f}%"),
+        title=f"Indicadores de Qualidade — {mes_princ} x {mes_comp}",
+    )
+
     fig.update_traces(textposition="outside")
     fig.update_yaxes(range=[0, 100])
     fig.update_layout(height=380)
+
     return fig
 
 
-def top_barra(df, coluna, titulo, top=10):
-    dados = df.groupby(coluna).size().reset_index(name="Chamados").sort_values("Chamados", ascending=False).head(top)
-    fig = px.bar(dados, x="Chamados", y=coluna, orientation="h", text="Chamados", title=titulo)
-    fig.update_layout(height=420, yaxis={"categoryorder": "total ascending"})
+def grafico_evolucao(df):
+    mensal = (
+        df.groupby(["AnoMesNum", "MesAno"])
+        .size()
+        .reset_index(name="Chamados")
+        .sort_values("AnoMesNum")
+    )
+
+    fig = px.line(
+        mensal,
+        x="MesAno",
+        y="Chamados",
+        markers=True,
+        title="Evolução Mensal de Chamados",
+    )
+
+    fig.update_layout(height=390)
+
+    return fig
+
+
+def grafico_top_barra(df, coluna, titulo, top=10):
+    if df.empty or coluna not in df.columns:
+        return go.Figure()
+
+    dados = (
+        df.groupby(coluna)
+        .size()
+        .reset_index(name="Chamados")
+        .sort_values("Chamados", ascending=False)
+        .head(top)
+    )
+
+    fig = px.bar(
+        dados,
+        x="Chamados",
+        y=coluna,
+        orientation="h",
+        text="Chamados",
+        title=titulo,
+    )
+
+    fig.update_layout(
+        height=420,
+        yaxis={"categoryorder": "total ascending"},
+    )
+
     return fig
 
 
 def grafico_prioridade(df, titulo):
-    dados = df.groupby("Prioridade").size().reset_index(name="Chamados").sort_values("Chamados", ascending=False)
-    fig = px.pie(dados, values="Chamados", names="Prioridade", title=titulo, hole=.35)
+    if df.empty:
+        return go.Figure()
+
+    dados = (
+        df.groupby("Prioridade")
+        .size()
+        .reset_index(name="Chamados")
+        .sort_values("Chamados", ascending=False)
+    )
+
+    fig = px.pie(
+        dados,
+        values="Chamados",
+        names="Prioridade",
+        title=titulo,
+        hole=0.35,
+    )
+
     fig.update_layout(height=420)
+
     return fig
 
 
-st.markdown("""
-<div class="title-box">
-<h1>Dashboard CEO — Suporte / Help Desk</h1>
-<p>Visão executiva mensal com SLA, primeiro retorno, criticidade, clientes e causas dos chamados.</p>
-</div>
-""", unsafe_allow_html=True)
+# ============================================================
+# INTERFACE
+# ============================================================
+
+st.markdown(
+    """
+    <div class="title-box">
+        <h1>Dashboard CEO — Suporte / Help Desk</h1>
+        <p>Visão executiva mensal com SLA, primeiro retorno, criticidade, clientes e causas dos chamados.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.sidebar.header("📤 Upload dos Excel")
-uploaded_files = st.sidebar.file_uploader("Envie um ou mais arquivos Excel", type=["xls", "xlsx"], accept_multiple_files=True)
+
+uploaded_files = st.sidebar.file_uploader(
+    "Envie um ou mais arquivos Excel",
+    type=["xls", "xlsx"],
+    accept_multiple_files=True,
+)
+
 if not uploaded_files:
     st.info("Faça upload de um ou mais arquivos Excel para gerar o dashboard.")
     st.stop()
 
-df, arquivos, mapas = carregar_dados_excel(uploaded_files)
+df, arquivos_carregados, mapas_colunas = carregar_dados_excel(uploaded_files)
+
 if df.empty:
     st.error("Nenhum dado válido foi carregado. Verifique os arquivos enviados.")
     st.stop()
 
 st.sidebar.markdown("### ℹ️ Informações do Dataset")
-st.sidebar.write(f"**Arquivos enviados:** {len(arquivos)}")
-for arq in arquivos:
+st.sidebar.write(f"**Arquivos enviados:** {len(arquivos_carregados)}")
+
+for arq in arquivos_carregados:
     st.sidebar.write(f"- `{arq}`")
+
 st.sidebar.write(f"**Total de linhas:** {len(df)}")
+
 with st.sidebar.expander("📋 Colunas mapeadas"):
-    for arquivo, mapa in mapas.items():
+    for arquivo, mapa in mapas_colunas.items():
         st.write(f"**{arquivo}**")
-        st.json({k: (v if v is not None else "Não encontrada") for k, v in mapa.items()})
+        mapa_exibicao = {
+            destino: origem if origem is not None else "Não encontrada"
+            for destino, origem in mapa.items()
+        }
+        st.json(mapa_exibicao)
 
-meses = meses_ordenados(df)
+meses = obter_meses_ordenados(df)
+
 st.sidebar.header("🎛️ Filtros")
-modo = st.sidebar.radio("Modo de visão", ["Único mês", "Comparação"], index=0)
-mes_principal = st.sidebar.selectbox("Mês principal", meses, index=len(meses)-1)
-sug = mes_anterior(df, mes_principal)
-idx_comp = meses.index(sug) if sug in meses else 0
-mes_comp = None
+
+modo = st.sidebar.radio(
+    "Modo de visão",
+    ["Único mês", "Comparação"],
+    index=0,
+)
+
+mes_principal = st.sidebar.selectbox(
+    "Mês principal",
+    meses,
+    index=len(meses) - 1,
+)
+
+mes_sugerido = mes_anterior_disponivel(df, mes_principal)
+
+if mes_sugerido and mes_sugerido in meses:
+    index_comp = meses.index(mes_sugerido)
+else:
+    index_comp = 0
+
+mes_comparacao = None
+
 if modo == "Comparação":
-    mes_comp = st.sidebar.selectbox("Mês de comparação", meses, index=idx_comp)
+    mes_comparacao = st.sidebar.selectbox(
+        "Mês de comparação",
+        meses,
+        index=index_comp,
+    )
 
-empresa = st.sidebar.selectbox("Empresa", ["Todas"] + sorted(df["Empresa_Padronizada"].dropna().unique().tolist()))
-setor = st.sidebar.selectbox("Setor", ["Todos"] + sorted(df["Setor"].dropna().unique().tolist()))
-resp = st.sidebar.selectbox("Responsável", ["Todos"] + sorted(df["Responsavel"].dropna().unique().tolist()))
-prior = st.sidebar.selectbox("Prioridade", ["Todas"] + sorted(df["Prioridade"].dropna().unique().tolist()))
-stat = st.sidebar.selectbox("Status", ["Todos"] + sorted(df["Status"].dropna().unique().tolist()))
+empresas = ["Todas"] + sorted(df["Empresa_Padronizada"].dropna().unique().tolist())
+setores = ["Todos"] + sorted(df["Setor"].dropna().unique().tolist())
+responsaveis = ["Todos"] + sorted(df["Responsavel"].dropna().unique().tolist())
+prioridades = ["Todas"] + sorted(df["Prioridade"].dropna().unique().tolist())
+status_lista = ["Todos"] + sorted(df["Status"].dropna().unique().tolist())
 
-dff = df.copy()
-if empresa != "Todas": dff = dff[dff["Empresa_Padronizada"] == empresa]
-if setor != "Todos": dff = dff[dff["Setor"] == setor]
-if resp != "Todos": dff = dff[dff["Responsavel"] == resp]
-if prior != "Todas": dff = dff[dff["Prioridade"] == prior]
-if stat != "Todos": dff = dff[dff["Status"] == stat]
+empresa_sel = st.sidebar.selectbox("Empresa", empresas)
+setor_sel = st.sidebar.selectbox("Setor", setores)
+resp_sel = st.sidebar.selectbox("Responsável", responsaveis)
+prioridade_sel = st.sidebar.selectbox("Prioridade", prioridades)
+status_sel = st.sidebar.selectbox("Status", status_lista)
 
-df_principal = filtrar_mes(dff, mes_principal)
-kp = calcular_kpis(df_principal)
+
+def aplicar_filtros_base(df_base: pd.DataFrame) -> pd.DataFrame:
+    df_filtrado = df_base.copy()
+
+    if empresa_sel != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["Empresa_Padronizada"] == empresa_sel]
+
+    if setor_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Setor"] == setor_sel]
+
+    if resp_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Responsavel"] == resp_sel]
+
+    if prioridade_sel != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["Prioridade"] == prioridade_sel]
+
+    if status_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+    return df_filtrado
+
+
+df_filtrado_geral = aplicar_filtros_base(df)
+
+# ============================================================
+# CORREÇÃO PRINCIPAL:
+# o mês principal controla KPIs e gráficos do mês selecionado.
+# ============================================================
+
+df_principal = df_filtrado_geral[
+    df_filtrado_geral["MesAno"].astype(str) == str(mes_principal)
+].copy()
+
+kpi_princ = calcular_kpis(df_principal)
+
 df_comp = pd.DataFrame()
-kc = None
+kpi_comp = None
+
 if modo == "Comparação":
-    df_comp = filtrar_mes(dff, mes_comp)
-    kc = calcular_kpis(df_comp)
-    if mes_comp == mes_principal:
+    df_comp = df_filtrado_geral[
+        df_filtrado_geral["MesAno"].astype(str) == str(mes_comparacao)
+    ].copy()
+
+    kpi_comp = calcular_kpis(df_comp)
+
+    if mes_comparacao == mes_principal:
         st.warning("O mês de comparação é igual ao mês principal. Escolha meses diferentes para comparar melhor.")
 
-st.markdown(f'<div class="section-title">📌 KPIs — {mes_principal if modo == "Único mês" else mes_principal + " x " + mes_comp}</div><div class="section-line"></div>', unsafe_allow_html=True)
-cores = ["linear-gradient(135deg,#667eea,#764ba2)", "linear-gradient(135deg,#7c3aed,#4f46e5)", "linear-gradient(135deg,#0f9b8e,#38ef7d)", "linear-gradient(135deg,#f59e0b,#fcd34d)", "linear-gradient(135deg,#14b8a6,#5eead4)", "linear-gradient(135deg,#1e3a8a,#334155)", "linear-gradient(135deg,#ef4444,#f97316)", "linear-gradient(135deg,#e11d48,#ef4444)"]
+
+with st.expander("🧪 Conferência por mês"):
+    conferencia = (
+        df_filtrado_geral
+        .groupby(["AnoMesNum", "MesAno"])
+        .size()
+        .reset_index(name="Linhas")
+        .sort_values("AnoMesNum")
+    )
+
+    st.dataframe(conferencia[["MesAno", "Linhas"]], use_container_width=True)
+
+    st.write("Mês principal selecionado:", mes_principal)
+    st.write("Linhas do mês principal:", len(df_principal))
+
+    if modo == "Comparação":
+        st.write("Mês de comparação selecionado:", mes_comparacao)
+        st.write("Linhas do mês de comparação:", len(df_comp))
+
+
+# ============================================================
+# KPIs
+# ============================================================
+
 if modo == "Único mês":
-    cards = [("Total de chamados", fmt_num(kp["total"]), "Volume do mês"), ("Empresas atendidas", fmt_num(kp["empresas"]), "Clientes atendidos"), ("Chamados encerrados", fmt_num(kp["encerrados"]), "Finalizados"), ("Chamados pendentes", fmt_num(kp["pendentes"]), "Abertos ou sem encerramento"), ("SLA cumprido", fmt_pct(kp["sla"]), "Dentro do prazo"), ("1º retorno ≤ 1h", fmt_pct(kp["retorno_1h"]), "Velocidade inicial"), ("Tempo médio resolução", fmt_h(kp["resolucao_h"]), "Tempo médio até finalizar"), ("Chamados críticos", fmt_num(kp["criticos"]), "Risco operacional")]
+    st.markdown(
+        f'<div class="section-title">📌 KPIs — {mes_principal}</div><div class="section-line"></div>',
+        unsafe_allow_html=True,
+    )
 else:
-    cards = [("Total de chamados", fmt_num(kp["total"]), delta_texto(kp["total"], kc["total"])), ("Empresas atendidas", fmt_num(kp["empresas"]), delta_texto(kp["empresas"], kc["empresas"])), ("Chamados encerrados", fmt_num(kp["encerrados"]), delta_texto(kp["encerrados"], kc["encerrados"])), ("Chamados pendentes", fmt_num(kp["pendentes"]), delta_texto(kp["pendentes"], kc["pendentes"])), ("SLA cumprido", fmt_pct(kp["sla"]), delta_texto(kp["sla"], kc["sla"], "pp")), ("1º retorno ≤ 1h", fmt_pct(kp["retorno_1h"]), delta_texto(kp["retorno_1h"], kc["retorno_1h"], "pp")), ("Tempo médio resolução", fmt_h(kp["resolucao_h"]), delta_texto(kp["resolucao_h"], kc["resolucao_h"], "h")), ("Chamados críticos", fmt_num(kp["criticos"]), delta_texto(kp["criticos"], kc["criticos"]))]
+    st.markdown(
+        f'<div class="section-title">📌 KPIs — {mes_principal} x {mes_comparacao}</div><div class="section-line"></div>',
+        unsafe_allow_html=True,
+    )
+
+cores = [
+    "linear-gradient(135deg, #667eea, #764ba2)",
+    "linear-gradient(135deg, #7c3aed, #4f46e5)",
+    "linear-gradient(135deg, #0f9b8e, #38ef7d)",
+    "linear-gradient(135deg, #f59e0b, #fcd34d)",
+    "linear-gradient(135deg, #14b8a6, #5eead4)",
+    "linear-gradient(135deg, #1e3a8a, #334155)",
+    "linear-gradient(135deg, #ef4444, #f97316)",
+    "linear-gradient(135deg, #e11d48, #ef4444)",
+]
+
+if modo == "Único mês":
+    cards = [
+        ("Total de chamados", formatar_numero(kpi_princ["total"]), "Volume do mês"),
+        ("Empresas atendidas", formatar_numero(kpi_princ["empresas"]), "Clientes atendidos"),
+        ("Chamados encerrados", formatar_numero(kpi_princ["encerrados"]), "Finalizados"),
+        ("Chamados pendentes", formatar_numero(kpi_princ["pendentes"]), "Abertos ou sem encerramento"),
+        ("SLA cumprido", formatar_percentual(kpi_princ["sla"]), "Dentro do prazo"),
+        ("1º retorno ≤ 1h", formatar_percentual(kpi_princ["retorno_1h"]), "Velocidade inicial"),
+        ("Tempo médio resolução", formatar_horas(kpi_princ["resolucao_h"]), "Tempo médio até finalizar"),
+        ("Chamados críticos", formatar_numero(kpi_princ["criticos"]), "Risco operacional"),
+    ]
+else:
+    cards = [
+        ("Total de chamados", formatar_numero(kpi_princ["total"]), texto_delta(kpi_princ["total"], kpi_comp["total"], "chamados")),
+        ("Empresas atendidas", formatar_numero(kpi_princ["empresas"]), texto_delta(kpi_princ["empresas"], kpi_comp["empresas"], "empresas")),
+        ("Chamados encerrados", formatar_numero(kpi_princ["encerrados"]), texto_delta(kpi_princ["encerrados"], kpi_comp["encerrados"], "encerrados")),
+        ("Chamados pendentes", formatar_numero(kpi_princ["pendentes"]), texto_delta(kpi_princ["pendentes"], kpi_comp["pendentes"], "pendentes")),
+        ("SLA cumprido", formatar_percentual(kpi_princ["sla"]), texto_delta(kpi_princ["sla"], kpi_comp["sla"], pp=True)),
+        ("1º retorno ≤ 1h", formatar_percentual(kpi_princ["retorno_1h"]), texto_delta(kpi_princ["retorno_1h"], kpi_comp["retorno_1h"], pp=True)),
+        ("Tempo médio resolução", formatar_horas(kpi_princ["resolucao_h"]), texto_delta(kpi_princ["resolucao_h"], kpi_comp["resolucao_h"], horas=True)),
+        ("Chamados críticos", formatar_numero(kpi_princ["criticos"]), texto_delta(kpi_princ["criticos"], kpi_comp["criticos"], "críticos")),
+    ]
+
 for linha in range(2):
     cols = st.columns(4)
+
     for i in range(4):
-        idx = linha*4+i
+        idx = linha * 4 + i
+
         with cols[i]:
-            card(cards[idx][0], cards[idx][1], cards[idx][2], cores[idx])
+            criar_card(
+                cards[idx][0],
+                cards[idx][1],
+                cards[idx][2],
+                cores[idx],
+            )
 
-st.markdown('<div class="section-title">📈 Resumo Geral</div><div class="section-line"></div>', unsafe_allow_html=True)
-st.plotly_chart(grafico_resumo_unico(kp, mes_principal) if modo == "Único mês" else grafico_resumo_comp(kp, kc, mes_principal, mes_comp), use_container_width=True)
 
-st.markdown('<div class="section-title">🎯 Indicadores de Qualidade</div><div class="section-line"></div>', unsafe_allow_html=True)
-st.plotly_chart(grafico_qualidade_unico(kp, mes_principal) if modo == "Único mês" else grafico_qualidade_comp(kp, kc, mes_principal, mes_comp), use_container_width=True)
+# ============================================================
+# RESUMO GERAL E QUALIDADE
+# ============================================================
 
-st.markdown('<div class="section-title">🗓️ Evolução Mensal</div><div class="section-line"></div>', unsafe_allow_html=True)
-mensal = dff.groupby(["AnoMesNum", "MesAno"]).size().reset_index(name="Chamados").sort_values("AnoMesNum")
-st.plotly_chart(px.line(mensal, x="MesAno", y="Chamados", markers=True, title="Evolução Mensal de Chamados"), use_container_width=True)
+st.markdown(
+    '<div class="section-title">📈 Resumo Geral</div><div class="section-line"></div>',
+    unsafe_allow_html=True,
+)
 
-st.markdown('<div class="section-title">🏢 Operação, Clientes e Motivos</div><div class="section-line"></div>', unsafe_allow_html=True)
+if modo == "Único mês":
+    st.plotly_chart(
+        grafico_resumo_unico(kpi_princ, mes_principal),
+        use_container_width=True,
+    )
+else:
+    st.plotly_chart(
+        grafico_resumo_comparacao(kpi_princ, kpi_comp, mes_principal, mes_comparacao),
+        use_container_width=True,
+    )
+
+st.markdown(
+    '<div class="section-title">🎯 Indicadores de Qualidade</div><div class="section-line"></div>',
+    unsafe_allow_html=True,
+)
+
+if modo == "Único mês":
+    st.plotly_chart(
+        grafico_qualidade_unico(kpi_princ, mes_principal),
+        use_container_width=True,
+    )
+else:
+    st.plotly_chart(
+        grafico_qualidade_comparacao(kpi_princ, kpi_comp, mes_principal, mes_comparacao),
+        use_container_width=True,
+    )
+
+
+# ============================================================
+# EVOLUÇÃO MENSAL
+# ============================================================
+
+st.markdown(
+    '<div class="section-title">🗓️ Evolução Mensal</div><div class="section-line"></div>',
+    unsafe_allow_html=True,
+)
+
+st.plotly_chart(
+    grafico_evolucao(df_filtrado_geral),
+    use_container_width=True,
+)
+
+
+# ============================================================
+# OPERAÇÃO, CLIENTES E MOTIVOS
+# ============================================================
+
+st.markdown(
+    '<div class="section-title">🏢 Operação, Clientes e Motivos</div><div class="section-line"></div>',
+    unsafe_allow_html=True,
+)
+
+base_visual = df_principal
+
 col1, col2 = st.columns(2)
+
 with col1:
-    st.plotly_chart(top_barra(df_principal, "Setor", f"Chamados por Setor — {mes_principal}"), use_container_width=True)
+    st.plotly_chart(
+        grafico_top_barra(
+            base_visual,
+            "Setor",
+            f"Chamados por Setor — {mes_principal}",
+            top=10,
+        ),
+        use_container_width=True,
+    )
+
 with col2:
-    st.plotly_chart(grafico_prioridade(df_principal, f"Chamados por Prioridade — {mes_principal}"), use_container_width=True)
+    st.plotly_chart(
+        grafico_prioridade(
+            base_visual,
+            f"Chamados por Prioridade — {mes_principal}",
+        ),
+        use_container_width=True,
+    )
+
 col3, col4 = st.columns(2)
+
 with col3:
-    st.plotly_chart(top_barra(df_principal, "Empresa_Padronizada", f"Top Clientes — {mes_principal}"), use_container_width=True)
+    st.plotly_chart(
+        grafico_top_barra(
+            base_visual,
+            "Empresa_Padronizada",
+            f"Top Clientes — {mes_principal}",
+            top=10,
+        ),
+        use_container_width=True,
+    )
+
 with col4:
-    st.plotly_chart(top_barra(df_principal, "Tipo", f"Top Motivos / Tipos — {mes_principal}"), use_container_width=True)
+    st.plotly_chart(
+        grafico_top_barra(
+            base_visual,
+            "Tipo",
+            f"Top Motivos / Tipos — {mes_principal}",
+            top=10,
+        ),
+        use_container_width=True,
+    )
+
+
+# ============================================================
+# CLIENTES COM MAIOR AUMENTO
+# ============================================================
 
 if modo == "Comparação":
-    st.markdown('<div class="section-title">🚨 Clientes com Maior Aumento</div><div class="section-line"></div>', unsafe_allow_html=True)
-    rank = ranking_aumento(df_principal, df_comp)
-    rank_pos = rank[rank["Diferenca"] > 0].copy().head(15)
-    if rank_pos.empty:
+    st.markdown(
+        '<div class="section-title">🚨 Clientes com Maior Aumento</div><div class="section-line"></div>',
+        unsafe_allow_html=True,
+    )
+
+    ranking = ranking_clientes_aumento(df_principal, df_comp)
+    ranking_pos = ranking[ranking["Diferenca"] > 0].copy().head(15)
+
+    if ranking_pos.empty:
         st.info("Nenhum cliente apresentou aumento de chamados no período comparado.")
     else:
-        exibir = rank_pos.rename(columns={"Empresa_Padronizada": "Empresa", "Chamados_Mes_Comparado": f"Chamados {mes_comp}", "Chamados_Mes_Principal": f"Chamados {mes_principal}", "Diferenca": "Diferença", "Variacao_%": "Variação %"})
-        exibir["Variação %"] = exibir["Variação %"].round(1)
-        st.dataframe(exibir, use_container_width=True)
-        fig = px.bar(rank_pos.head(10), x="Diferenca", y="Empresa_Padronizada", orientation="h", text="Diferenca", title=f"Top clientes com maior aumento — {mes_principal} x {mes_comp}")
-        fig.update_layout(height=430, yaxis={"categoryorder": "total ascending"})
+        ranking_exibir = ranking_pos.copy()
+        ranking_exibir["Variacao_%"] = ranking_exibir["Variacao_%"].round(1)
+
+        ranking_exibir = ranking_exibir.rename(columns={
+            "Empresa_Padronizada": "Empresa",
+            "Chamados_Mes_Comparado": f"Chamados {mes_comparacao}",
+            "Chamados_Mes_Principal": f"Chamados {mes_principal}",
+            "Diferenca": "Diferença",
+            "Variacao_%": "Variação %",
+        })
+
+        st.dataframe(ranking_exibir, use_container_width=True)
+
+        fig = px.bar(
+            ranking_pos.head(10),
+            x="Diferenca",
+            y="Empresa_Padronizada",
+            orientation="h",
+            text="Diferenca",
+            title=f"Top clientes com maior aumento — {mes_principal} x {mes_comparacao}",
+        )
+
+        fig.update_layout(
+            height=430,
+            yaxis={"categoryorder": "total ascending"},
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown('<div class="section-title">⚠️ Alertas Executivos</div><div class="section-line"></div>', unsafe_allow_html=True)
-alertas = [("Chamados críticos", fmt_num(kp["criticos"])), ("Pendentes", fmt_num(kp["pendentes"])), ("Fora do SLA", fmt_num(kp["fora_sla"])), ("Sem avaliação", fmt_num(kp["sem_avaliacao"])), ("1º retorno ≤ 1h", fmt_pct(kp["retorno_1h"]))]
+
+# ============================================================
+# ALERTAS EXECUTIVOS
+# ============================================================
+
+st.markdown(
+    '<div class="section-title">⚠️ Alertas Executivos</div><div class="section-line"></div>',
+    unsafe_allow_html=True,
+)
+
+alertas = []
+
+alertas.append(("Chamados críticos", formatar_numero(kpi_princ["criticos"])))
+alertas.append(("Pendentes", formatar_numero(kpi_princ["pendentes"])))
+alertas.append(("Fora do SLA", formatar_numero(kpi_princ["fora_sla"])))
+alertas.append(("Sem avaliação", formatar_numero(kpi_princ["sem_avaliacao"])))
+alertas.append(("1º retorno ≤ 1h", formatar_percentual(kpi_princ["retorno_1h"])))
+
 if modo == "Comparação":
-    rank = ranking_aumento(df_principal, df_comp)
-    pos = rank[rank["Diferenca"] > 0]
-    if not pos.empty:
-        top = pos.iloc[0]
-        var = "-" if pd.isna(top["Variacao_%"]) else f"{top['Variacao_%']:.1f}%".replace(".", ",")
-        alertas.append(("Cliente com maior aumento", f"{top['Empresa_Padronizada']} | +{int(top['Diferenca'])} ({var})"))
-    cbloc = rank[rank["Empresa_Padronizada"] == "CBLOC"]
-    if not cbloc.empty and cbloc.iloc[0]["Diferenca"] > 0:
-        row = cbloc.iloc[0]
-        var = "-" if pd.isna(row["Variacao_%"]) else f"{row['Variacao_%']:.1f}%".replace(".", ",")
-        alertas.append(("CBLOC em atenção", f"+{int(row['Diferenca'])} chamados ({var})"))
+    ranking = ranking_clientes_aumento(df_principal, df_comp)
+    ranking_pos = ranking[ranking["Diferenca"] > 0].copy()
+
+    if not ranking_pos.empty:
+        top_cliente = ranking_pos.iloc[0]
+
+        var_txt = "-"
+
+        if not pd.isna(top_cliente["Variacao_%"]):
+            var_txt = f"{top_cliente['Variacao_%']:.1f}%".replace(".", ",")
+
+        alertas.append((
+            "Cliente com maior aumento",
+            f"{top_cliente['Empresa_Padronizada']} | +{int(top_cliente['Diferenca'])} ({var_txt})"
+        ))
+
+    cbloc = ranking[ranking["Empresa_Padronizada"] == "CBLOC"]
+
+    if not cbloc.empty:
+        cbloc_row = cbloc.iloc[0]
+
+        if cbloc_row["Diferenca"] > 0:
+            var_txt = "-"
+
+            if not pd.isna(cbloc_row["Variacao_%"]):
+                var_txt = f"{cbloc_row['Variacao_%']:.1f}%".replace(".", ",")
+
+            alertas.append((
+                "CBLOC em atenção",
+                f"+{int(cbloc_row['Diferenca'])} chamados ({var_txt})"
+            ))
+
 cols = st.columns(3)
-for i, (t, v) in enumerate(alertas):
+
+for i, (titulo, valor) in enumerate(alertas):
     with cols[i % 3]:
-        st.markdown(f'<div class="alert-box"><div class="small-muted">{t}</div><div style="font-size:24px;font-weight:900;color:#0f172a;margin-top:5px;">{v}</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="alert-box">
+                <div class="small-muted">{titulo}</div>
+                <div style="font-size:24px;font-weight:900;color:#0f172a;margin-top:5px;">{valor}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+# ============================================================
+# AMOSTRA DOS DADOS
+# ============================================================
 
 with st.expander("🔎 Ver amostra dos dados tratados"):
-    st.dataframe(dff.head(100), use_container_width=True)
+    st.dataframe(df_filtrado_geral.head(100), use_container_width=True)
 
 st.caption("Dashboard preparado para Excel via upload e futura integração com API usando somente GET.")
